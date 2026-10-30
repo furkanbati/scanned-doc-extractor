@@ -1,0 +1,2 @@
+# Docker runs on Linux: keep LF in every checkout, also on Windows.
+* text=auto eol=lf
