@@ -1,6 +1,48 @@
+import re
+
 from rapidfuzz.distance import Levenshtein
 
 from extractor.schema import DocumentType, Fields
+
+# Error kinds of one field, from closest to the label to furthest.
+ERROR_KINDS = ("format", "near", "missing", "wrong")
+
+
+def loose(value: str | None) -> str | None:
+    """Letters and digits only, so spacing and punctuation do not count.
+
+    The labels themselves are inconsistent here ("TAMPOI, 81200" next to
+    "TAMPOI,81200"), which the exact match counts as an error.
+    """
+
+    if value is None:
+        return None
+
+    return re.sub(r"[^0-9A-Z]", "", value.upper()) or None
+
+
+def error_kind(predicted: str | None, expected: str | None) -> str | None:
+    """How a normalized prediction differs from its normalized label.
+
+    None: exact match (or no label). "format": same letters and digits, only
+    spacing or punctuation differ. "near": at most 2 letters or digits off, a
+    misread character or a typo in the label. "missing": nothing predicted.
+    "wrong": anything else.
+    """
+
+    if expected is None or predicted == expected:
+        return None
+
+    if predicted is None:
+        return "missing"
+
+    if loose(predicted) == loose(expected):
+        return "format"
+
+    if Levenshtein.distance(loose(predicted) or "", loose(expected) or "") <= 2:
+        return "near"
+
+    return "wrong"
 
 
 def field_matches(
