@@ -37,6 +37,11 @@ def build_ocr(name: str, options: dict | None = None) -> OcrEngine:
 
         return TesseractOcr(**(options or {}))
 
+    if name == "rapidocr":
+        from extractor.ocr.rapid import RapidOcr
+
+        return RapidOcr(**(options or {}))
+
     raise ValueError(f"Unknown OCR engine {name!r}")
 
 

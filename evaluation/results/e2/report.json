@@ -1,0 +1,28 @@
+{
+  "metadata": {
+    "config": "e2",
+    "description": "RapidOCR (PP-OCRv6 CNNs) on the raw image, rule and regex fields.",
+    "doctype": "receipt",
+    "date": "2026-10-31 09:06 UTC",
+    "split": "test",
+    "ocr": "rapidocr 3.10.0 (PP-OCRv6 small)",
+    "cpu": "Intel(R) Core(TM) Ultra 5 226V"
+  },
+  "receipts": 400,
+  "field_accuracy": {
+    "company": 0.4775,
+    "address": 0.345,
+    "date": 0.96,
+    "total": 0.74,
+    "mean": 0.630625
+  },
+  "cer": 0.3636437113099065,
+  "seconds_per_receipt": 3.5671922703549717,
+  "fields_from_labelled_lines": {
+    "company": 0.6325,
+    "address": 0.5075,
+    "date": 0.99,
+    "total": 0.6875,
+    "mean": 0.704375
+  }
+}

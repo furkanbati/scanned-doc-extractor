@@ -1,0 +1,8 @@
+name: e2
+description: RapidOCR (PP-OCRv6 CNNs) on the raw image, rule and regex fields.
+doctype: receipt
+preprocess: none
+ocr: rapidocr
+ocr_options:
+  group_lines: true
+fields: rules
