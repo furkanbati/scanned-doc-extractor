@@ -1,0 +1,7 @@
+name: e1
+description: Baseline. Tesseract on the raw image, rule and regex fields.
+preprocess: none
+ocr: tesseract
+ocr_options:
+  lang: eng
+fields: rules
