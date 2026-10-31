@@ -157,3 +157,29 @@ def test_failed_sample_counts_as_empty_and_run_goes_on(sroie_root):
     assert results[1].error == "ConnectionError: network down"
     assert results[1].prediction == {}
     assert summary["field_accuracy"]["company"] == 0.5
+
+
+class CountingVision(FakeVision):
+    def __init__(self):
+        self.calls = 0
+
+    def extract(self, image, lines):
+        self.calls += 1
+        return super().extract(image, lines)
+
+
+def test_checkpoint_resumes_without_rerunning(sroie_root, tmp_path):
+    samples = load_sroie(sroie_root, split="all")
+    checkpoint = tmp_path / "checkpoint.jsonl"
+
+    first = CountingVision()
+    run.run_samples(Pipeline(None, first), samples[:1], checkpoint)
+
+    second = CountingVision()
+    results = run.run_samples(Pipeline(None, second), samples, checkpoint)
+
+    assert first.calls == 1
+    assert second.calls == 1  # only the receipt the first run did not reach
+    assert [result.sample.id for result in results] == ["000", "001"]
+    assert results[0].usage.input_tokens == 1000
+    assert len(checkpoint.read_text(encoding="utf-8").splitlines()) == 2

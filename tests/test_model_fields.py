@@ -74,3 +74,68 @@ def test_openai_vision_request_and_result():
     assert extraction.fields["total"] == "9.00"
     assert extraction.usage.input_tokens == 1200
     assert extraction.usage.output_tokens == 150
+
+
+class FakeOllama:
+    def __init__(self):
+        self.calls = []
+
+    def chat(self, **call):
+        self.calls.append(call)
+        return SimpleNamespace(
+            message=SimpleNamespace(content=json.dumps({
+                "company": "ABC SDN BHD", "address": None, "date": "25/12/2018", "total": "9.00",
+            })),
+            prompt_eval_count=400,
+            eval_count=60,
+        )
+
+
+def test_local_llm_sends_ocr_text_and_schema():
+    from extractor.dataset import OcrLine
+    from extractor.fields.local_llm import LocalLLMExtractor
+
+    client = FakeOllama()
+    extractor = LocalLLMExtractor(RECEIPT, model="qwen3.5:4b", client=client)
+
+    extraction = extractor.extract(None, [OcrLine("ABC SDN BHD", (0,) * 8), OcrLine("TOTAL 9.00", (0,) * 8)])
+
+    call = client.calls[0]
+    assert call["model"] == "qwen3.5:4b"
+    assert call["format"] == json_schema(RECEIPT)
+    assert call["think"] is False
+    assert call["options"]["temperature"] == 0
+    assert call["options"]["num_predict"] == 512
+    assert call["options"]["num_ctx"] == 3072
+    assert call["messages"][1]["content"].endswith("ABC SDN BHD\nTOTAL 9.00")
+    assert extraction.fields["company"] == "ABC SDN BHD"
+    assert extraction.usage.output_tokens == 60
+
+
+def test_chat_with_retry_retries_server_errors_only():
+    import pytest
+
+    from extractor.fields.local_llm import chat_with_retry
+
+    class ServerError(Exception):
+        status_code = 500
+
+    class BadRequest(Exception):
+        status_code = 400
+
+    class Flaky:
+        def __init__(self, error, failures):
+            self.error, self.failures, self.calls = error, failures, 0
+
+        def chat(self, **call):
+            self.calls += 1
+            if self.calls <= self.failures:
+                raise self.error("boom")
+            return "ok"
+
+    flaky = Flaky(ServerError, failures=2)
+    assert chat_with_retry(flaky, wait=0, model="m") == "ok"
+    assert flaky.calls == 3
+
+    with pytest.raises(BadRequest):
+        chat_with_retry(Flaky(BadRequest, failures=1), wait=0, model="m")

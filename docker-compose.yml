@@ -2,5 +2,23 @@ services:
   test:
     build: .
 
+    env_file:
+      - path: .env
+        required: false
+
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+
     volumes:
       - .:/app
+
+  ollama:
+    image: ollama/ollama
+
+    volumes:
+      - ollama:/root/.ollama
+
+    restart: unless-stopped
+
+volumes:
+  ollama:

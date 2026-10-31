@@ -68,6 +68,11 @@ def build_extractor(
 
         return OpenAIVisionExtractor(doctype, **(options or {}))
 
+    if name == "local_llm":
+        from extractor.fields.local_llm import LocalLLMExtractor
+
+        return LocalLLMExtractor(doctype, **(options or {}))
+
     raise ValueError(f"Unknown field extractor {name!r}")
 
 

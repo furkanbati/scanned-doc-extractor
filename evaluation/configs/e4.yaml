@@ -1,0 +1,11 @@
+name: e4
+description: RapidOCR (PP-OCRv6) lines, a local LLM (Ollama) returns the fields as JSON.
+doctype: receipt
+preprocess: none
+ocr: rapidocr
+ocr_options:
+  group_lines: true
+fields: local_llm
+fields_options:
+  model: qwen3.5:4b
+  think: false

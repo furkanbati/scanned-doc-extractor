@@ -47,13 +47,68 @@ def load_config(name: str) -> dict:
         return yaml.safe_load(file)
 
 
-def run_samples(pipeline: Pipeline, samples: list[Sample]) -> list[SampleResult]:
+def result_to_json(result: SampleResult) -> dict:
+    return {
+        "id": result.sample.id,
+        "prediction": result.prediction,
+        "ocr_text": result.ocr_text,
+        "seconds": result.seconds,
+        "usage": vars(result.usage) if result.usage else None,
+        "error": result.error,
+    }
+
+
+def result_from_json(data: dict, sample: Sample) -> SampleResult:
+    return SampleResult(
+        sample=sample,
+        prediction=data["prediction"],
+        ocr_text=data["ocr_text"],
+        seconds=data["seconds"],
+        usage=Usage(**data["usage"]) if data["usage"] else None,
+        error=data["error"],
+    )
+
+
+def load_checkpoint(path: Path | None, samples: list[Sample]) -> dict[str, SampleResult]:
+    if path is None or not path.is_file():
+        return {}
+
+    by_id = {sample.id: sample for sample in samples}
+    done = {}
+
+    with path.open(encoding="utf-8") as file:
+        for line in file:
+            data = json.loads(line)
+            if data["id"] in by_id:
+                done[data["id"]] = result_from_json(data, by_id[data["id"]])
+
+    return done
+
+
+def run_samples(
+    pipeline: Pipeline,
+    samples: list[Sample],
+    checkpoint: Path | None = None,
+) -> list[SampleResult]:
     """Run every sample. A sample that fails (a model call that keeps failing,
-    say) counts as an empty prediction and keeps its error; the run goes on."""
+    say) counts as an empty prediction and keeps its error; the run goes on.
+
+    With a checkpoint file, each result is appended to it as soon as it is
+    done, and samples already in it are not run again: a run that crashed
+    continues where it stopped.
+    """
+
+    done = load_checkpoint(checkpoint, samples)
+    if done:
+        print(f"Resuming: {len(done)} receipts already in {checkpoint}", flush=True)
 
     results = []
 
     for number, sample in enumerate(samples, start=1):
+        if sample.id in done:
+            results.append(done[sample.id])
+            continue
+
         with Image.open(sample.image_path) as image:
             image.load()
             start = time.perf_counter()
@@ -84,6 +139,11 @@ def run_samples(pipeline: Pipeline, samples: list[Sample]) -> list[SampleResult]
                     usage=output.usage,
                 )
             )
+
+        if checkpoint is not None:
+            checkpoint.parent.mkdir(parents=True, exist_ok=True)
+            with checkpoint.open("a", encoding="utf-8") as file:
+                file.write(json.dumps(result_to_json(results[-1]), ensure_ascii=False) + "\n")
 
         if number % 25 == 0 or number == len(samples):
             print(f"{number}/{len(samples)} receipts", flush=True)
@@ -307,7 +367,14 @@ def main() -> None:
     pipeline = build_pipeline(config, doctype)
     samples = load_sroie(args.data, split=args.split, limit=args.limit, doctype=doctype)
 
-    results = run_samples(pipeline, samples)
+    name = config["name"] if args.split == "test" else f"{config['name']}-{args.split}"
+    if args.limit is not None:
+        name += f"-first{args.limit}"
+
+    output_dir = args.output / name
+    checkpoint = output_dir / "checkpoint.jsonl"
+
+    results = run_samples(pipeline, samples, checkpoint)
     summary = summarize(
         results,
         doctype,
@@ -328,12 +395,8 @@ def main() -> None:
         "cpu": cpu_name(),
     }
 
-    name = config["name"] if args.split == "test" else f"{config['name']}-{args.split}"
-    if args.limit is not None:
-        name += f"-first{args.limit}"
-
-    output_dir = args.output / name
     write_reports(output_dir, summary, metadata, per_receipt_rows(results, doctype))
+    checkpoint.unlink(missing_ok=True)
     print(render_markdown(summary, metadata))
     print(f"Reports written to {output_dir}")
 
