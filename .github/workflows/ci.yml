@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Tests run in the same image as the API, so Tesseract and RapidOCR are real.
+      # They need no dataset, model download or API key.
+      - name: Build
+        run: docker compose --profile test build test
+
+      - name: Run tests
+        run: docker compose run --rm test python -m pytest -v

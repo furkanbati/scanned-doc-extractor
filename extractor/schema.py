@@ -84,6 +84,19 @@ def normalize_text(value: str | None) -> str | None:
     return text or None
 
 
+def loose(value: str | None) -> str | None:
+    """Letters and digits only, so spacing and punctuation do not count.
+
+    The SROIE labels are not consistent here ("TAMPOI, 81200" next to
+    "TAMPOI,81200"), which an exact match counts as an error.
+    """
+
+    if value is None:
+        return None
+
+    return re.sub(r"[^0-9A-Z]", "", value.upper()) or None
+
+
 def _to_year(value: str) -> int:
     year = int(value)
 

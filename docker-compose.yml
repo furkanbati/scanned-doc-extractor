@@ -1,6 +1,42 @@
 services:
+  api:
+    build: .
+
+    ports:
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+
+    env_file:
+      - path: .env
+        required: false
+
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+
+    restart: unless-stopped
+
+  ui:
+    build:
+      context: .
+      dockerfile: Dockerfile.ui
+
+    ports:
+      - "127.0.0.1:${UI_PORT:-8501}:8501"
+
+    environment:
+      API_URL: http://api:8000
+
+    depends_on:
+      - api
+
+    restart: unless-stopped
+
   test:
     build: .
+
+    profiles:
+      - test
+
+    command: ["python", "-m", "pytest"]
 
     env_file:
       - path: .env
@@ -12,8 +48,12 @@ services:
     volumes:
       - .:/app
 
+  # Local models for e4 and e5: docker compose --profile local up -d
   ollama:
     image: ollama/ollama
+
+    profiles:
+      - local
 
     volumes:
       - ollama:/root/.ollama
