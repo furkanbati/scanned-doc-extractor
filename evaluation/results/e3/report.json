@@ -1,0 +1,29 @@
+{
+  "metadata": {
+    "config": "e3",
+    "description": "OpenAI gpt-6-luna reads the image and returns the fields as JSON (no OCR).",
+    "doctype": "receipt",
+    "date": "2026-10-31 10:04 UTC",
+    "split": "test",
+    "ocr": "none",
+    "fields": "openai_vision (gpt-6-luna)",
+    "cpu": "Intel(R) Core(TM) Ultra 5 226V"
+  },
+  "receipts": 400,
+  "failed": 0,
+  "field_accuracy": {
+    "company": 0.7525,
+    "address": 0.485,
+    "date": 0.975,
+    "total": 0.9775,
+    "mean": 0.7975
+  },
+  "cer": null,
+  "seconds_per_receipt": 7.156486364559978,
+  "fields_from_labelled_lines": null,
+  "tokens": {
+    "input": 887025,
+    "output": 71315
+  },
+  "usd_per_receipt": 0.0003109
+}

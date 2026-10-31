@@ -20,7 +20,8 @@ from PIL import Image
 from evaluation.metrics import corpus_cer, field_accuracy, field_matches
 from extractor.dataset import DEFAULT_ROOT, SPLITS, Sample, load_sroie
 from extractor.ocr.base import lines_to_text
-from extractor.pipeline import Pipeline, build_fields, build_pipeline
+from extractor.fields.base import Usage
+from extractor.pipeline import Pipeline, build_extractor, build_pipeline
 from extractor.schema import DocumentType, Fields, load_doctype
 
 CONFIG_DIR = Path(__file__).parent / "configs"
@@ -33,6 +34,8 @@ class SampleResult:
     prediction: Fields
     ocr_text: str
     seconds: float
+    usage: Usage | None = None
+    error: str | None = None
 
 
 def load_config(name: str) -> dict:
@@ -45,23 +48,42 @@ def load_config(name: str) -> dict:
 
 
 def run_samples(pipeline: Pipeline, samples: list[Sample]) -> list[SampleResult]:
+    """Run every sample. A sample that fails (a model call that keeps failing,
+    say) counts as an empty prediction and keeps its error; the run goes on."""
+
     results = []
 
     for number, sample in enumerate(samples, start=1):
         with Image.open(sample.image_path) as image:
             image.load()
             start = time.perf_counter()
-            output = pipeline.run(image)
+            try:
+                output = pipeline.run(image)
+            except Exception as error:
+                output, failure = None, f"{type(error).__name__}: {error}"
+                print(f"{sample.id} failed: {failure}", flush=True)
             seconds = time.perf_counter() - start
 
-        results.append(
-            SampleResult(
-                sample=sample,
-                prediction=output.fields,
-                ocr_text=lines_to_text(output.lines),
-                seconds=seconds,
+        if output is None:
+            results.append(
+                SampleResult(
+                    sample=sample,
+                    prediction={},
+                    ocr_text="",
+                    seconds=seconds,
+                    error=failure,
+                )
             )
-        )
+        else:
+            results.append(
+                SampleResult(
+                    sample=sample,
+                    prediction=output.fields,
+                    ocr_text=lines_to_text(output.lines),
+                    seconds=seconds,
+                    usage=output.usage,
+                )
+            )
 
         if number % 25 == 0 or number == len(samples):
             print(f"{number}/{len(samples)} receipts", flush=True)
@@ -73,38 +95,66 @@ def summarize(
     results: list[SampleResult],
     doctype: DocumentType,
     fields_from_labels: dict | None,
+    has_ocr: bool = True,
+    prices: dict | None = None,
 ) -> dict:
+    """Accuracy, CER (OCR pipelines only), speed and, for model calls, tokens and cost.
+
+    prices: USD per million input and output tokens.
+    """
+
     truths = [result.sample.fields for result in results]
     seconds = [result.seconds for result in results]
+    usages = [result.usage for result in results if result.usage is not None]
 
-    return {
+    summary = {
         "receipts": len(results),
+        "failed": sum(result.error is not None for result in results),
         "field_accuracy": field_accuracy(
             [result.prediction for result in results], truths, doctype
         ),
         "cer": corpus_cer(
             [result.ocr_text for result in results],
             [result.sample.text for result in results],
-        ),
+        ) if has_ocr else None,
         "seconds_per_receipt": sum(seconds) / len(seconds),
         "fields_from_labelled_lines": fields_from_labels,
+        "tokens": None,
+        "usd_per_receipt": None,
     }
+
+    if usages:
+        tokens = {
+            "input": sum(usage.input_tokens for usage in usages),
+            "output": sum(usage.output_tokens for usage in usages),
+        }
+        summary["tokens"] = tokens
+
+        if prices:
+            cost = (tokens["input"] * prices["input"] + tokens["output"] * prices["output"]) / 1e6
+            summary["usd_per_receipt"] = cost / len(results)
+
+    return summary
 
 
 def label_line_accuracy(
     config: dict,
     samples: list[Sample],
     doctype: DocumentType,
-) -> dict:
+) -> dict | None:
     """Field accuracy when the extractor reads the labelled lines instead of OCR.
 
-    Separates field-extraction errors from OCR errors.
+    Separates field-extraction errors from OCR errors. Only for extractors that
+    read text without a model call (re-running a paid model would double the cost).
     """
 
-    extract = build_fields(config["fields"])
+    if config["fields"] != "rules":
+        return None
+
+    extractor = build_extractor(config["fields"], doctype, config.get("fields_options"))
 
     return field_accuracy(
-        [extract(sample.lines) for sample in samples],
+        [extractor.extract(None, sample.lines).fields for sample in samples],
         [sample.fields for sample in samples],
         doctype,
     )
@@ -122,6 +172,7 @@ def per_receipt_rows(results: list[SampleResult], doctype: DocumentType) -> list
                 "predicted": doctype.normalize(result.prediction),
                 "expected": doctype.normalize(truth),
                 "seconds": round(result.seconds, 3),
+                "error": result.error,
             }
         )
 
@@ -135,7 +186,7 @@ def render_markdown(summary: dict, metadata: dict) -> str:
         f"# {metadata['config']}: {metadata['description']}",
         "",
         *[f"- **{key}:** {value}" for key, value in metadata.items()],
-        f"- **Receipts:** {summary['receipts']}",
+        f"- **Receipts:** {summary['receipts']} ({summary['failed']} failed, counted as empty)",
         "",
         "## Field accuracy",
         "",
@@ -143,7 +194,7 @@ def render_markdown(summary: dict, metadata: dict) -> str:
         "",
         "| Source | " + " | ".join(fields) + " | Mean |",
         "|---" * (len(fields) + 2) + "|",
-        "| OCR | "
+        "| Pipeline | "
         + " | ".join(f"{accuracy[field]:.3f}" for field in fields)
         + f" | {accuracy['mean']:.3f} |",
     ]
@@ -158,23 +209,45 @@ def render_markdown(summary: dict, metadata: dict) -> str:
         lines += [
             "",
             "\"Labelled lines\" runs the same field extractor on the dataset's "
-            "line transcripts instead of OCR output: the gap to the OCR row is "
+            "line transcripts instead of OCR output: the gap to the Pipeline row is "
             "what OCR errors cost.",
         ]
 
     lines += [
         "",
-        "## OCR and speed",
+        "## OCR, speed and cost",
         "",
         "| Metric | Value |",
         "|---|---|",
-        f"| CER (corpus) | {summary['cer']:.3f} |",
-        f"| Seconds per receipt (CPU) | {summary['seconds_per_receipt']:.2f} |",
-        "",
-        "CER compares OCR lines joined in the engine's reading order with the "
-        "labelled lines joined in annotation order.",
-        "",
     ]
+
+    if summary["cer"] is not None:
+        lines.append(f"| CER (corpus) | {summary['cer']:.3f} |")
+
+    lines.append(f"| Seconds per receipt | {summary['seconds_per_receipt']:.2f} |")
+
+    if summary["tokens"] is not None:
+        receipts = summary["receipts"]
+        lines += [
+            f"| Input tokens per receipt | {summary['tokens']['input'] / receipts:.0f} |",
+            "| Output tokens per receipt (incl. reasoning) | "
+            f"{summary['tokens']['output'] / receipts:.0f} |",
+        ]
+
+    if summary["usd_per_receipt"] is not None:
+        lines += [
+            f"| USD per receipt | {summary['usd_per_receipt']:.5f} |",
+            f"| USD per 1,000 receipts | {summary['usd_per_receipt'] * 1000:.2f} |",
+        ]
+
+    if summary["cer"] is not None:
+        lines += [
+            "",
+            "CER compares OCR lines joined in the engine's reading order with the "
+            "labelled lines joined in annotation order.",
+        ]
+
+    lines.append("")
 
     return "\n".join(lines)
 
@@ -231,11 +304,17 @@ def main() -> None:
     args = parse_args()
     config = load_config(args.config)
     doctype = load_doctype(config["doctype"])
-    pipeline = build_pipeline(config)
+    pipeline = build_pipeline(config, doctype)
     samples = load_sroie(args.data, split=args.split, limit=args.limit, doctype=doctype)
 
     results = run_samples(pipeline, samples)
-    summary = summarize(results, doctype, label_line_accuracy(config, samples, doctype))
+    summary = summarize(
+        results,
+        doctype,
+        label_line_accuracy(config, samples, doctype),
+        has_ocr=pipeline.ocr is not None,
+        prices=config.get("price_per_million_tokens"),
+    )
 
     metadata = {
         "config": config["name"],
@@ -243,7 +322,9 @@ def main() -> None:
         "doctype": doctype.name,
         "date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
         "split": args.split if args.limit is None else f"{args.split} (first {args.limit})",
-        "ocr": f"{pipeline.ocr.name} {pipeline.ocr.version()}",
+        "ocr": f"{pipeline.ocr.name} {pipeline.ocr.version()}" if pipeline.ocr else "none",
+        "fields": pipeline.extractor.name
+        + (f" ({pipeline.extractor.model})" if hasattr(pipeline.extractor, "model") else ""),
         "cpu": cpu_name(),
     }
 

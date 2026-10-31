@@ -6,7 +6,7 @@ from PIL import Image
 from evaluation import run
 from extractor.dataset import OcrLine, load_sroie
 from extractor.pipeline import Pipeline, build_pipeline
-from extractor.fields.rules import extract_fields
+from extractor.fields.rules import RuleExtractor
 from extractor.schema import load_doctype
 
 RECEIPT = load_doctype("receipt")
@@ -58,7 +58,7 @@ def test_run_and_write_reports(sroie_root, tmp_path):
              OcrLine("TOTAL 6.00", (0,) * 8)],
     })
 
-    results = run.run_samples(Pipeline(ocr, extract_fields), samples)
+    results = run.run_samples(Pipeline(ocr, RuleExtractor()), samples)
     summary = run.summarize(
         results, RECEIPT, run.label_line_accuracy({"fields": "rules"}, samples, RECEIPT)
     )
@@ -78,22 +78,82 @@ def test_run_and_write_reports(sroie_root, tmp_path):
 
     assert report["field_accuracy"]["total"] == 0.5
     assert json.loads(rows[1])["matches"]["total"] is False
-    assert "| OCR |" in (output / "report.md").read_text(encoding="utf-8")
+    assert "| Pipeline |" in (output / "report.md").read_text(encoding="utf-8")
 
 
 def test_load_config():
     config = run.load_config("e1")
 
     assert config["name"] == "e1"
-    assert build_pipeline(config).ocr.name == "tesseract"
+    assert build_pipeline(config, RECEIPT).ocr.name == "tesseract"
 
 
 def test_build_pipeline_rejects_unknown_stages():
     with pytest.raises(ValueError):
-        build_pipeline({"preprocess": "opencv", "ocr": "tesseract", "fields": "rules"})
+        build_pipeline({"preprocess": "opencv", "ocr": "tesseract", "fields": "rules"}, RECEIPT)
 
     with pytest.raises(ValueError):
-        build_pipeline({"ocr": "paddle", "fields": "rules"})
+        build_pipeline({"ocr": "paddle", "fields": "rules"}, RECEIPT)
 
     with pytest.raises(ValueError):
-        build_pipeline({"ocr": "tesseract", "fields": "llm"})
+        build_pipeline({"ocr": "tesseract", "fields": "llm"}, RECEIPT)
+
+
+def test_rules_need_ocr():
+    with pytest.raises(ValueError):
+        build_pipeline({"ocr": "none", "fields": "rules"}, RECEIPT)
+
+
+class FakeVision:
+    """Reads nothing: answers a fixed receipt and reports token use."""
+
+    name = "fake_vision"
+    needs_ocr = False
+
+    def extract(self, image, lines):
+        from extractor.fields.base import Extraction, Usage
+
+        assert lines == []
+        return Extraction(
+            fields={"company": "ABC SDN BHD", "date": "25/12/2018", "total": "9.00"},
+            usage=Usage(input_tokens=1000, output_tokens=200),
+        )
+
+
+def test_summary_without_ocr_reports_tokens_and_cost(sroie_root):
+    samples = load_sroie(sroie_root, split="all")
+
+    results = run.run_samples(Pipeline(None, FakeVision()), samples)
+    summary = run.summarize(
+        results, RECEIPT, None, has_ocr=False, prices={"input": 0.10, "output": 0.50}
+    )
+
+    assert summary["cer"] is None
+    assert summary["field_accuracy"]["total"] == 0.5
+    assert summary["tokens"] == {"input": 2000, "output": 400}
+    # (1000 * 0.10 + 200 * 0.50) / 1e6 per receipt
+    assert summary["usd_per_receipt"] == pytest.approx(0.0002)
+
+    report = run.render_markdown(summary, {"config": "e3", "description": "test"})
+
+    assert "CER" not in report
+    assert "| USD per 1,000 receipts | 0.20 |" in report
+
+
+class BrokenVision(FakeVision):
+    def extract(self, image, lines):
+        if image.width == 11:
+            raise ConnectionError("network down")
+        return super().extract(image, lines)
+
+
+def test_failed_sample_counts_as_empty_and_run_goes_on(sroie_root):
+    samples = load_sroie(sroie_root, split="all")
+
+    results = run.run_samples(Pipeline(None, BrokenVision()), samples)
+    summary = run.summarize(results, RECEIPT, None, has_ocr=False)
+
+    assert summary["failed"] == 1
+    assert results[1].error == "ConnectionError: network down"
+    assert results[1].prediction == {}
+    assert summary["field_accuracy"]["company"] == 0.5

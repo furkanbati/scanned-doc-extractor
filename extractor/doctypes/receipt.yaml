@@ -1,12 +1,20 @@
 name: receipt
-description: Scanned retail receipt (SROIE).
+description: >-
+  Scanned retail receipt (SROIE). Some scans have a person's name stamped or
+  handwritten above the receipt; that name is not part of the receipt.
 fields:
   - name: company
     type: text
-    description: Name of the business that issued the receipt.
+    description: >-
+      Registered name of the business that issued the receipt, usually ending in
+      SDN BHD, BHD, S/B, TRADING or ENTERPRISE. Prefer it over a brand or logo
+      name. Leave out registration or GST numbers in brackets.
   - name: address
     type: text
-    description: Address of the business, as printed on the receipt.
+    description: >-
+      Address of the business as printed below its name: every address line,
+      including a branch or outlet line in brackets. Leave out phone, fax,
+      email and GST numbers.
   - name: date
     type: date
     description: Date of the purchase.

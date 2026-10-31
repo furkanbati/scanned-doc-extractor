@@ -7,6 +7,7 @@ looking at the dev split only.
 import re
 
 from extractor.dataset import OcrLine
+from extractor.fields.base import Extraction
 from extractor.schema import (
     DAY_MONTH_YEAR,
     MONTH_DAY_YEAR,
@@ -186,3 +187,11 @@ def find_total(texts: list[str]) -> str | None:
     ]
 
     return f"{max(amounts):.2f}" if amounts else None
+
+
+class RuleExtractor:
+    name = "rules"
+    needs_ocr = True
+
+    def extract(self, image, lines: list[OcrLine]) -> Extraction:
+        return Extraction(fields=extract_fields(lines))

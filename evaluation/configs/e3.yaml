@@ -1,0 +1,13 @@
+name: e3
+description: OpenAI gpt-6-luna reads the image and returns the fields as JSON (no OCR).
+doctype: receipt
+preprocess: none
+ocr: none
+fields: openai_vision
+fields_options:
+  model: gpt-6-luna
+  reasoning_effort: low
+# USD per million tokens, developers.openai.com/api/docs/pricing, 2026-10-31
+price_per_million_tokens:
+  input: 0.10
+  output: 0.50
