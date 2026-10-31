@@ -1,0 +1,10 @@
+name: e5
+description: A local vision model (Ollama) reads the image and returns the fields as JSON (no OCR).
+doctype: receipt
+preprocess: none
+ocr: none
+fields: local_vision
+fields_options:
+  model: qwen3-vl:2b
+  think: false
+  max_side: 1600

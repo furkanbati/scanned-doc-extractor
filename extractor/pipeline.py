@@ -73,6 +73,11 @@ def build_extractor(
 
         return LocalLLMExtractor(doctype, **(options or {}))
 
+    if name == "local_vision":
+        from extractor.fields.local_vision import LocalVisionExtractor
+
+        return LocalVisionExtractor(doctype, **(options or {}))
+
     raise ValueError(f"Unknown field extractor {name!r}")
 
 

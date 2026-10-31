@@ -139,3 +139,28 @@ def test_chat_with_retry_retries_server_errors_only():
 
     with pytest.raises(BadRequest):
         chat_with_retry(Flaky(BadRequest, failures=1), wait=0, model="m")
+
+
+def test_local_vision_sends_the_image_without_ocr():
+    from extractor.fields.local_vision import LocalVisionExtractor
+
+    client = FakeOllama()
+    extractor = LocalVisionExtractor(RECEIPT, model="qwen3-vl:2b", max_side=100, client=client)
+
+    extraction = extractor.extract(Image.new("RGB", (400, 200), "white"), [])
+
+    message = client.calls[0]["messages"][1]
+    assert extractor.needs_ocr is False
+    assert message["images"][0][:2] == b"\xff\xd8"  # JPEG
+    assert client.calls[0]["format"] == json_schema(RECEIPT)
+    assert extraction.fields["total"] == "9.00"
+
+
+def test_jpeg_bytes_shrinks_large_images():
+    import io
+
+    from extractor.fields.local_vision import jpeg_bytes
+
+    data = jpeg_bytes(Image.new("RGB", (3000, 1000)), max_side=1500)
+
+    assert Image.open(io.BytesIO(data)).size == (1500, 500)
