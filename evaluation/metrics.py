@@ -1,38 +1,43 @@
 from rapidfuzz.distance import Levenshtein
 
-from extractor.schema import FIELDS, Receipt
+from extractor.schema import DocumentType, Fields
 
 
-def field_matches(prediction: Receipt, truth: Receipt) -> dict[str, bool]:
+def field_matches(
+    prediction: Fields,
+    truth: Fields,
+    doctype: DocumentType,
+) -> dict[str, bool]:
     """Normalized exact match per field. A missing truth value never matches."""
 
-    predicted = prediction.normalized()
-    expected = truth.normalized()
+    predicted = doctype.normalize(prediction)
+    expected = doctype.normalize(truth)
 
     return {
         field: expected[field] is not None and predicted[field] == expected[field]
-        for field in FIELDS
+        for field in doctype.field_names
     }
 
 
 def field_accuracy(
-    predictions: list[Receipt],
-    truths: list[Receipt],
+    predictions: list[Fields],
+    truths: list[Fields],
+    doctype: DocumentType,
 ) -> dict[str, float]:
-    """Accuracy per field over the receipts, plus their mean under "mean"."""
+    """Accuracy per field over the documents, plus their mean under "mean"."""
 
     if len(predictions) != len(truths):
         raise ValueError("predictions and truths must have the same length")
 
     if not truths:
-        raise ValueError("at least one receipt is required")
+        raise ValueError("at least one document is required")
 
-    matches = [field_matches(p, t) for p, t in zip(predictions, truths)]
+    matches = [field_matches(p, t, doctype) for p, t in zip(predictions, truths)]
     scores = {
         field: sum(match[field] for match in matches) / len(matches)
-        for field in FIELDS
+        for field in doctype.field_names
     }
-    scores["mean"] = sum(scores.values()) / len(FIELDS)
+    scores["mean"] = sum(scores.values()) / len(doctype.field_names)
 
     return scores
 

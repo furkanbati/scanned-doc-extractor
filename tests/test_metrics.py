@@ -1,9 +1,11 @@
 import pytest
 
 from evaluation.metrics import cer, corpus_cer, field_accuracy, field_matches
-from extractor.schema import Receipt
+from extractor.schema import load_doctype
 
-TRUTH = Receipt(
+RECEIPT = load_doctype("receipt")
+
+TRUTH = dict(
     company="ABC SDN BHD",
     address="NO.1, JALAN SAGU, JOHOR.",
     date="25/12/2018",
@@ -12,14 +14,14 @@ TRUTH = Receipt(
 
 
 def test_field_matches_uses_normalization():
-    prediction = Receipt(
+    prediction = dict(
         company="abc  sdn bhd",
         address="NO.1 , JALAN SAGU , JOHOR .",
         date="25-12-18",
         total="RM 9",
     )
 
-    assert field_matches(prediction, TRUTH) == {
+    assert field_matches(prediction, TRUTH, RECEIPT) == {
         "company": True,
         "address": True,
         "date": True,
@@ -28,9 +30,9 @@ def test_field_matches_uses_normalization():
 
 
 def test_field_matches_wrong_and_missing():
-    prediction = Receipt(company="ABC SDN BHD", date="26/12/2018")
+    prediction = dict(company="ABC SDN BHD", date="26/12/2018")
 
-    assert field_matches(prediction, TRUTH) == {
+    assert field_matches(prediction, TRUTH, RECEIPT) == {
         "company": True,
         "address": False,
         "date": False,
@@ -39,16 +41,16 @@ def test_field_matches_wrong_and_missing():
 
 
 def test_missing_truth_never_matches():
-    assert field_matches(Receipt(), Receipt())["company"] is False
+    assert field_matches({}, {}, RECEIPT)["company"] is False
 
 
 def test_field_accuracy_per_field_and_mean():
     predictions = [
         TRUTH,
-        Receipt(company="ABC SDN BHD", total="9.00"),
+        dict(company="ABC SDN BHD", total="9.00"),
     ]
 
-    scores = field_accuracy(predictions, [TRUTH, TRUTH])
+    scores = field_accuracy(predictions, [TRUTH, TRUTH], RECEIPT)
 
     assert scores == {
         "company": 1.0,
@@ -61,10 +63,10 @@ def test_field_accuracy_per_field_and_mean():
 
 def test_field_accuracy_rejects_bad_input():
     with pytest.raises(ValueError):
-        field_accuracy([TRUTH], [])
+        field_accuracy([TRUTH], [], RECEIPT)
 
     with pytest.raises(ValueError):
-        field_accuracy([], [])
+        field_accuracy([], [], RECEIPT)
 
 
 @pytest.mark.parametrize(

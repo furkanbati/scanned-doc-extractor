@@ -5,12 +5,12 @@ from PIL import Image
 
 from extractor.dataset import OcrLine
 from extractor.ocr.base import OcrEngine
-from extractor.schema import Receipt
+from extractor.schema import Fields
 
 
 @dataclass(frozen=True)
 class PipelineResult:
-    receipt: Receipt
+    fields: Fields
     lines: list[OcrLine]
 
 
@@ -20,7 +20,7 @@ class Pipeline:
     def __init__(
         self,
         ocr: OcrEngine,
-        fields: Callable[[list[OcrLine]], Receipt],
+        fields: Callable[[list[OcrLine]], Fields],
     ):
         self.ocr = ocr
         self.fields = fields
@@ -28,7 +28,7 @@ class Pipeline:
     def run(self, image: Image.Image) -> PipelineResult:
         lines = self.ocr.read(image)
 
-        return PipelineResult(receipt=self.fields(lines), lines=lines)
+        return PipelineResult(fields=self.fields(lines), lines=lines)
 
 
 def build_ocr(name: str, options: dict | None = None) -> OcrEngine:
@@ -40,7 +40,7 @@ def build_ocr(name: str, options: dict | None = None) -> OcrEngine:
     raise ValueError(f"Unknown OCR engine {name!r}")
 
 
-def build_fields(name: str) -> Callable[[list[OcrLine]], Receipt]:
+def build_fields(name: str) -> Callable[[list[OcrLine]], Fields]:
     if name == "rules":
         from extractor.fields.rules import extract_fields
 

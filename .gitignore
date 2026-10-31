@@ -25,3 +25,6 @@ htmlcov/
 
 # Per-receipt results carry dataset labels
 evaluation/results/**/receipts.jsonl
+
+# Personal development log (Turkish), not part of the project
+notes/

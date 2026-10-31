@@ -1,10 +1,23 @@
+"""Document types and value normalization.
+
+A document type (extractor/doctypes/<name>.yaml) lists the fields to extract,
+each with a type that decides how values are normalized before comparison.
+Extracted values travel as plain dicts: {field name: value or None}.
+"""
+
 import re
+from collections.abc import Callable
 from datetime import date
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
+from typing import Literal
 
+import yaml
 from pydantic import BaseModel
 
-FIELDS = ("company", "address", "date", "total")
+DOCTYPE_DIR = Path(__file__).parent / "doctypes"
+
+Fields = dict[str, str | None]
 
 MONTHS = {
     "JAN": 1, "FEB": 2, "MAR": 3, "APR": 4, "MAY": 5, "JUN": 6,
@@ -18,21 +31,44 @@ MONTH_DAY_YEAR = re.compile(r"([A-Z]{3})[A-Z]*[\s\-/.]*(\d{1,2})[\s\-/.,]+(\d{2,
 AMOUNT = re.compile(r"-?\d+(?:\.\d+)?")
 
 
-class Receipt(BaseModel):
-    """The four SROIE key fields. Missing values are None."""
+class FieldSpec(BaseModel):
+    name: str
+    type: Literal["text", "date", "amount"]
+    description: str = ""
 
-    company: str | None = None
-    address: str | None = None
-    date: str | None = None
-    total: str | None = None
 
-    def normalized(self) -> dict[str, str | None]:
+class DocumentType(BaseModel):
+    """The fields to extract from one kind of document."""
+
+    name: str
+    description: str = ""
+    fields: list[FieldSpec]
+
+    @property
+    def field_names(self) -> list[str]:
+        return [field.name for field in self.fields]
+
+    def values(self, data: dict) -> Fields:
+        """Keep this type's fields from data, None for the missing ones."""
+
+        return {name: data.get(name) for name in self.field_names}
+
+    def normalize(self, values: Fields) -> Fields:
         return {
-            "company": normalize_text(self.company),
-            "address": normalize_text(self.address),
-            "date": normalize_date(self.date),
-            "total": normalize_total(self.total),
+            field.name: NORMALIZERS[field.type](values.get(field.name))
+            for field in self.fields
         }
+
+
+def load_doctype(name: str | Path) -> DocumentType:
+    """Load extractor/doctypes/<name>.yaml, or a YAML file at the given path."""
+
+    path = Path(name)
+    if not path.is_file():
+        path = DOCTYPE_DIR / f"{name}.yaml"
+
+    with path.open(encoding="utf-8") as file:
+        return DocumentType(**yaml.safe_load(file))
 
 
 def normalize_text(value: str | None) -> str | None:
@@ -118,7 +154,7 @@ def normalize_date(value: str | None) -> str | None:
     return text
 
 
-def normalize_total(value: str | None) -> str | None:
+def normalize_amount(value: str | None) -> str | None:
     """Parse an amount to a two-decimal string: 'RM 1,234.5' -> '1234.50'.
 
     Amounts that cannot be parsed fall back to normalize_text.
@@ -141,3 +177,10 @@ def normalize_total(value: str | None) -> str | None:
         return text
 
     return f"{amount.quantize(Decimal('0.01'))}"
+
+
+NORMALIZERS: dict[str, Callable[[str | None], str | None]] = {
+    "text": normalize_text,
+    "date": normalize_date,
+    "amount": normalize_amount,
+}

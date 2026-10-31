@@ -11,7 +11,7 @@ import random
 from dataclasses import dataclass
 from pathlib import Path
 
-from extractor.schema import FIELDS, Receipt
+from extractor.schema import DocumentType, Fields, load_doctype
 
 DEFAULT_ROOT = Path("data/sroie")
 SPLIT_SEED = 2019
@@ -29,7 +29,7 @@ class OcrLine:
 class Sample:
     id: str
     image_path: Path
-    receipt: Receipt
+    fields: Fields
     lines: list[OcrLine]
 
     @property
@@ -52,11 +52,9 @@ def load_lines(path: Path) -> list[OcrLine]:
         return [line for raw in file if (line := parse_box_line(raw))]
 
 
-def load_receipt(path: Path) -> Receipt:
+def load_fields(path: Path, doctype: DocumentType) -> Fields:
     with path.open(encoding="utf-8") as file:
-        data = json.load(file)
-
-    return Receipt(**{key: data.get(key) for key in Receipt.model_fields})
+        return doctype.values(json.load(file))
 
 
 def split_ids(ids: list[str], split: str) -> list[str]:
@@ -77,7 +75,9 @@ def load_sroie(
     root: Path = DEFAULT_ROOT,
     split: str = "test",
     limit: int | None = None,
+    doctype: DocumentType | None = None,
 ) -> list[Sample]:
+    doctype = doctype or load_doctype("receipt")
     root = Path(root)
     image_dir = root / "img"
 
@@ -94,7 +94,7 @@ def load_sroie(
         Sample(
             id=sample_id,
             image_path=image_dir / f"{sample_id}.jpg",
-            receipt=load_receipt(root / "key" / f"{sample_id}.json"),
+            fields=load_fields(root / "key" / f"{sample_id}.json", doctype),
             lines=load_lines(root / "box" / f"{sample_id}.csv"),
         )
         for sample_id in ids
@@ -102,11 +102,13 @@ def load_sroie(
 
 
 if __name__ == "__main__":
+    doctype = load_doctype("receipt")
+
     for name in SPLITS:
-        samples = load_sroie(split=name)
+        samples = load_sroie(split=name, doctype=doctype)
         missing = {
-            field: sum(s.receipt.normalized()[field] is None for s in samples)
-            for field in FIELDS
+            field: sum(doctype.normalize(s.fields)[field] is None for s in samples)
+            for field in doctype.field_names
         }
         print(
             f"{name}: {len(samples)} receipts, "

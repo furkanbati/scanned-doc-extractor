@@ -1,6 +1,7 @@
 """Rule and regex field extraction from OCR lines (the E1 baseline).
 
-Rules were written by looking at the dev split only.
+These rules are specific to the receipt document type. Rules were written by
+looking at the dev split only.
 """
 
 import re
@@ -10,7 +11,7 @@ from extractor.schema import (
     DAY_MONTH_YEAR,
     MONTH_DAY_YEAR,
     NUMERIC_DATE,
-    Receipt,
+    Fields,
     normalize_date,
 )
 
@@ -47,7 +48,7 @@ AMOUNT_ONLY = re.compile(r"^[^A-Z0-9]*(RM)?[^A-Z0-9]*[\d,.\s]+[^A-Z0-9]*$")
 YEARS = range(2010, 2031)
 
 
-def extract_fields(lines: list[OcrLine]) -> Receipt:
+def extract_fields(lines: list[OcrLine]) -> Fields:
     texts = [
         text
         for line in lines
@@ -55,12 +56,12 @@ def extract_fields(lines: list[OcrLine]) -> Receipt:
     ]
     company, company_end = company_name(texts, find_company(texts))
 
-    return Receipt(
-        company=company,
-        address=find_address(texts, company_end),
-        date=find_date(texts),
-        total=find_total(texts),
-    )
+    return {
+        "company": company,
+        "address": find_address(texts, company_end),
+        "date": find_date(texts),
+        "total": find_total(texts),
+    }
 
 
 def find_company(texts: list[str], window: int = 8) -> int | None:

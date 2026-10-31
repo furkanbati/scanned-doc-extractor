@@ -45,8 +45,8 @@ def test_load_sroie(sroie_root):
 
     assert sample.id == "000"
     assert sample.image_path == sroie_root / "img" / "000.jpg"
-    assert sample.receipt.company == "ABC SDN BHD"
-    assert sample.receipt.address is None
+    assert sample.fields["company"] == "ABC SDN BHD"
+    assert sample.fields["address"] is None
     assert sample.text == "ABC SDN BHD\nNO.53, JALAN SAGU 18,"
 
 

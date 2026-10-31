@@ -7,6 +7,9 @@ from evaluation import run
 from extractor.dataset import OcrLine, load_sroie
 from extractor.pipeline import Pipeline, build_pipeline
 from extractor.fields.rules import extract_fields
+from extractor.schema import load_doctype
+
+RECEIPT = load_doctype("receipt")
 
 
 class FakeOcr:
@@ -56,7 +59,9 @@ def test_run_and_write_reports(sroie_root, tmp_path):
     })
 
     results = run.run_samples(Pipeline(ocr, extract_fields), samples)
-    summary = run.summarize(results, run.label_line_accuracy({"fields": "rules"}, samples))
+    summary = run.summarize(
+        results, RECEIPT, run.label_line_accuracy({"fields": "rules"}, samples, RECEIPT)
+    )
 
     assert summary["receipts"] == 2
     assert summary["field_accuracy"]["total"] == 0.5
@@ -66,7 +71,7 @@ def test_run_and_write_reports(sroie_root, tmp_path):
 
     output = tmp_path / "out"
     run.write_reports(output, summary, {"config": "e1", "description": "test"},
-                      run.per_receipt_rows(results))
+                      run.per_receipt_rows(results, RECEIPT))
 
     report = json.loads((output / "report.json").read_text(encoding="utf-8"))
     rows = (output / "receipts.jsonl").read_text(encoding="utf-8").splitlines()

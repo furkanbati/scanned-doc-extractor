@@ -1,4 +1,5 @@
 from extractor.dataset import OcrLine
+from extractor.schema import load_doctype
 from extractor.fields.rules import (
     extract_fields,
     find_address,
@@ -32,7 +33,7 @@ RECEIPT = [
 def test_extract_fields():
     receipt = extract_fields(make_lines(*RECEIPT))
 
-    assert receipt.normalized() == {
+    assert load_doctype("receipt").normalize(receipt) == {
         "company": "MR D.I.Y. (JOHOR) SDN BHD",
         "address": "LOT 1851-A & 1851-B, JALAN KPB 6, 43300 SERI KEMBANGAN, SELANGOR",
         "date": "2019-01-12",
@@ -47,13 +48,13 @@ def test_company_prefers_business_words_over_first_line():
 def test_annotator_stamp_and_sdn_misread():
     receipt = extract_fields(make_lines("tan chay yee", "WARAKUYA PERMAS CITY SON BHD"))
 
-    assert receipt.company == "WARAKUYA PERMAS CITY SDN BHD"
+    assert receipt["company"] == "WARAKUYA PERMAS CITY SDN BHD"
 
 
 def test_company_joins_continuation_line():
     receipt = extract_fields(make_lines("POPULAR BOOK", "CO. (M) SDN BHD"))
 
-    assert receipt.company == "POPULAR BOOK CO. (M) SDN BHD"
+    assert receipt["company"] == "POPULAR BOOK CO. (M) SDN BHD"
 
 
 def test_address_skips_date_and_registration():

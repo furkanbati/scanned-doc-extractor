@@ -1,0 +1,15 @@
+name: receipt
+description: Scanned retail receipt (SROIE).
+fields:
+  - name: company
+    type: text
+    description: Name of the business that issued the receipt.
+  - name: address
+    type: text
+    description: Address of the business, as printed on the receipt.
+  - name: date
+    type: date
+    description: Date of the purchase.
+  - name: total
+    type: amount
+    description: Final amount paid, after tax and rounding.

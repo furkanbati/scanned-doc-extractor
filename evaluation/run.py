@@ -21,7 +21,7 @@ from evaluation.metrics import corpus_cer, field_accuracy, field_matches
 from extractor.dataset import DEFAULT_ROOT, SPLITS, Sample, load_sroie
 from extractor.ocr.base import lines_to_text
 from extractor.pipeline import Pipeline, build_fields, build_pipeline
-from extractor.schema import FIELDS, Receipt
+from extractor.schema import DocumentType, Fields, load_doctype
 
 CONFIG_DIR = Path(__file__).parent / "configs"
 DEFAULT_OUTPUT = Path(__file__).parent / "results"
@@ -30,7 +30,7 @@ DEFAULT_OUTPUT = Path(__file__).parent / "results"
 @dataclass(frozen=True)
 class SampleResult:
     sample: Sample
-    prediction: Receipt
+    prediction: Fields
     ocr_text: str
     seconds: float
 
@@ -57,7 +57,7 @@ def run_samples(pipeline: Pipeline, samples: list[Sample]) -> list[SampleResult]
         results.append(
             SampleResult(
                 sample=sample,
-                prediction=output.receipt,
+                prediction=output.fields,
                 ocr_text=lines_to_text(output.lines),
                 seconds=seconds,
             )
@@ -69,13 +69,19 @@ def run_samples(pipeline: Pipeline, samples: list[Sample]) -> list[SampleResult]
     return results
 
 
-def summarize(results: list[SampleResult], fields_from_labels: dict | None) -> dict:
-    truths = [result.sample.receipt for result in results]
+def summarize(
+    results: list[SampleResult],
+    doctype: DocumentType,
+    fields_from_labels: dict | None,
+) -> dict:
+    truths = [result.sample.fields for result in results]
     seconds = [result.seconds for result in results]
 
     return {
         "receipts": len(results),
-        "field_accuracy": field_accuracy([r.prediction for r in results], truths),
+        "field_accuracy": field_accuracy(
+            [result.prediction for result in results], truths, doctype
+        ),
         "cer": corpus_cer(
             [result.ocr_text for result in results],
             [result.sample.text for result in results],
@@ -85,7 +91,11 @@ def summarize(results: list[SampleResult], fields_from_labels: dict | None) -> d
     }
 
 
-def label_line_accuracy(config: dict, samples: list[Sample]) -> dict:
+def label_line_accuracy(
+    config: dict,
+    samples: list[Sample],
+    doctype: DocumentType,
+) -> dict:
     """Field accuracy when the extractor reads the labelled lines instead of OCR.
 
     Separates field-extraction errors from OCR errors.
@@ -95,21 +105,22 @@ def label_line_accuracy(config: dict, samples: list[Sample]) -> dict:
 
     return field_accuracy(
         [extract(sample.lines) for sample in samples],
-        [sample.receipt for sample in samples],
+        [sample.fields for sample in samples],
+        doctype,
     )
 
 
-def per_receipt_rows(results: list[SampleResult]) -> list[dict]:
+def per_receipt_rows(results: list[SampleResult], doctype: DocumentType) -> list[dict]:
     rows = []
 
     for result in results:
-        truth = result.sample.receipt
+        truth = result.sample.fields
         rows.append(
             {
                 "id": result.sample.id,
-                "matches": field_matches(result.prediction, truth),
-                "predicted": result.prediction.normalized(),
-                "expected": truth.normalized(),
+                "matches": field_matches(result.prediction, truth, doctype),
+                "predicted": doctype.normalize(result.prediction),
+                "expected": doctype.normalize(truth),
                 "seconds": round(result.seconds, 3),
             }
         )
@@ -119,6 +130,7 @@ def per_receipt_rows(results: list[SampleResult]) -> list[dict]:
 
 def render_markdown(summary: dict, metadata: dict) -> str:
     accuracy = summary["field_accuracy"]
+    fields = [field for field in accuracy if field != "mean"]
     lines = [
         f"# {metadata['config']}: {metadata['description']}",
         "",
@@ -129,10 +141,10 @@ def render_markdown(summary: dict, metadata: dict) -> str:
         "",
         "Normalized exact match per field (see `extractor/schema.py`).",
         "",
-        "| Source | " + " | ".join(FIELDS) + " | Mean |",
-        "|---" * (len(FIELDS) + 2) + "|",
+        "| Source | " + " | ".join(fields) + " | Mean |",
+        "|---" * (len(fields) + 2) + "|",
         "| OCR | "
-        + " | ".join(f"{accuracy[field]:.3f}" for field in FIELDS)
+        + " | ".join(f"{accuracy[field]:.3f}" for field in fields)
         + f" | {accuracy['mean']:.3f} |",
     ]
 
@@ -140,7 +152,7 @@ def render_markdown(summary: dict, metadata: dict) -> str:
     if labelled is not None:
         lines.append(
             "| Labelled lines | "
-            + " | ".join(f"{labelled[field]:.3f}" for field in FIELDS)
+            + " | ".join(f"{labelled[field]:.3f}" for field in fields)
             + f" | {labelled['mean']:.3f} |"
         )
         lines += [
@@ -218,15 +230,17 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     config = load_config(args.config)
+    doctype = load_doctype(config["doctype"])
     pipeline = build_pipeline(config)
-    samples = load_sroie(args.data, split=args.split, limit=args.limit)
+    samples = load_sroie(args.data, split=args.split, limit=args.limit, doctype=doctype)
 
     results = run_samples(pipeline, samples)
-    summary = summarize(results, label_line_accuracy(config, samples))
+    summary = summarize(results, doctype, label_line_accuracy(config, samples, doctype))
 
     metadata = {
         "config": config["name"],
         "description": config.get("description", ""),
+        "doctype": doctype.name,
         "date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
         "split": args.split if args.limit is None else f"{args.split} (first {args.limit})",
         "ocr": f"{pipeline.ocr.name} {pipeline.ocr.version()}",
@@ -238,7 +252,7 @@ def main() -> None:
         name += f"-first{args.limit}"
 
     output_dir = args.output / name
-    write_reports(output_dir, summary, metadata, per_receipt_rows(results))
+    write_reports(output_dir, summary, metadata, per_receipt_rows(results, doctype))
     print(render_markdown(summary, metadata))
     print(f"Reports written to {output_dir}")
 

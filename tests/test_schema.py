@@ -1,6 +1,12 @@
 import pytest
 
-from extractor.schema import Receipt, normalize_date, normalize_text, normalize_total
+from extractor.schema import (
+    DocumentType,
+    load_doctype,
+    normalize_amount,
+    normalize_date,
+    normalize_text,
+)
 
 
 @pytest.mark.parametrize(
@@ -53,16 +59,60 @@ def test_normalize_date(raw, expected):
         (None, None),
     ],
 )
-def test_normalize_total(raw, expected):
-    assert normalize_total(raw) == expected
+def test_normalize_amount(raw, expected):
+    assert normalize_amount(raw) == expected
 
 
-def test_receipt_normalized():
-    receipt = Receipt(company=" abc  sdn bhd", date="25/12/2018", total="RM 9")
+def test_receipt_doctype():
+    receipt = load_doctype("receipt")
 
-    assert receipt.normalized() == {
+    assert receipt.name == "receipt"
+    assert receipt.field_names == ["company", "address", "date", "total"]
+    assert [field.type for field in receipt.fields] == ["text", "text", "date", "amount"]
+    assert all(field.description for field in receipt.fields)
+
+
+def test_normalize_by_field_type():
+    receipt = load_doctype("receipt")
+
+    assert receipt.normalize({"company": " abc  sdn bhd", "date": "25/12/2018", "total": "RM 9"}) == {
         "company": "ABC SDN BHD",
         "address": None,
         "date": "2018-12-25",
         "total": "9.00",
     }
+
+
+def test_values_keeps_only_doctype_fields():
+    receipt = load_doctype("receipt")
+
+    assert receipt.values({"company": "ABC", "extra": "x"}) == {
+        "company": "ABC",
+        "address": None,
+        "date": None,
+        "total": None,
+    }
+
+
+def test_new_doctype_from_yaml(tmp_path):
+    path = tmp_path / "invoice.yaml"
+    path.write_text(
+        "name: invoice\n"
+        "fields:\n"
+        "  - {name: invoice_no, type: text}\n"
+        "  - {name: due, type: date}\n",
+        encoding="utf-8",
+    )
+
+    invoice = load_doctype(path)
+
+    assert invoice.field_names == ["invoice_no", "due"]
+    assert invoice.normalize({"invoice_no": " inv-7 ", "due": "01/02/2019"}) == {
+        "invoice_no": "INV-7",
+        "due": "2019-02-01",
+    }
+
+
+def test_unknown_field_type_is_rejected():
+    with pytest.raises(ValueError):
+        DocumentType(name="x", fields=[{"name": "a", "type": "number"}])
