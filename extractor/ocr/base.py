@@ -1,8 +1,13 @@
+from dataclasses import dataclass
 from typing import Protocol
 
 from PIL import Image
 
-from extractor.dataset import OcrLine
+
+@dataclass(frozen=True)
+class OcrLine:
+    text: str
+    box: tuple[int, ...]  # x1, y1, ..., x4, y4, clockwise from top left
 
 
 class OcrEngine(Protocol):

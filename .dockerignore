@@ -1,12 +1,18 @@
 .git
+.github
 .venv
 venv
 __pycache__
 *.pyc
-data
 .idea
 .vscode
 .env
 notes
-evaluation/results/**/receipts.jsonl
-evaluation/results/**/checkpoint.jsonl
+data
+
+# The images hold the product only. Evaluation, tests and the dataset script
+# run in the test container, which mounts the repository instead.
+evaluation
+tests
+scripts
+docs

@@ -12,11 +12,12 @@ comparison can only be rebuilt where the experiments were run.
 
 import argparse
 import json
+import sys
 from collections import Counter
 from pathlib import Path
 
 from evaluation.metrics import ERROR_KINDS, error_kind
-from evaluation.run import load_config
+from extractor.pipeline import ENGINE_DIR, load_engine
 
 DEFAULT_RESULTS = Path(__file__).parent / "results"
 
@@ -69,7 +70,7 @@ CLOUD_EXTRACTORS = {"openai_vision"}
 def leaves_machine(experiment: dict) -> str:
     """Whether the document is sent to a cloud API, from the experiment's config."""
 
-    config = experiment.get("config") or load_config(experiment["name"])
+    config = experiment.get("config") or load_engine(experiment["name"])
 
     return "yes" if config["fields"] in CLOUD_EXTRACTORS else "no"
 
@@ -180,6 +181,42 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def stale_measurements(name: str, report: dict, config: dict | None) -> list[str]:
+    """Where the engine's `measured` block no longer matches its latest report.
+
+    The product shows the numbers in extractor/engines/<name>.yaml, so they
+    have to be copied there by hand after a rerun; this catches a forgotten copy.
+    """
+
+    if config is None:
+        return []
+
+    usd = report.get("usd_per_receipt")
+    latest = {
+        "receipts": report["receipts"],
+        "field_accuracy": round(report["field_accuracy"]["mean"], 4),
+        "seconds_per_document": round(report["seconds_per_receipt"], 2),
+        "usd_per_1000": round(usd * 1000 if usd else 0.0, 4),
+    }
+    shown = config.get("measured") or {}
+
+    problems = []
+    for key, value in latest.items():
+        current = shown.get(key)
+        if key == "field_accuracy" and current is not None:
+            current = round(current, 4)
+        if current != value:
+            problems.append(f"{name}: measured.{key} is {current}, the report says {value}")
+
+    return problems
+
+
+def engine_config(name: str) -> dict | None:
+    path = ENGINE_DIR / f"{name}.yaml"
+
+    return load_engine(path) if path.is_file() else None
+
+
 def main() -> None:
     args = parse_args()
     names = args.experiments or sorted(
@@ -192,6 +229,10 @@ def main() -> None:
     report = render(experiments)
     (args.results / "comparison.md").write_text(report, encoding="utf-8")
     print(report)
+
+    for experiment in experiments:
+        for problem in stale_measurements(experiment["name"], experiment["report"], engine_config(experiment["name"])):
+            print(f"WARNING {problem}; update extractor/engines/{experiment['name']}.yaml", file=sys.stderr)
 
 
 if __name__ == "__main__":

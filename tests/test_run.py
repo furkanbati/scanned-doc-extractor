@@ -4,8 +4,9 @@ import pytest
 from PIL import Image
 
 from evaluation import run
-from extractor.dataset import OcrLine, load_sroie
-from extractor.pipeline import Pipeline, build_pipeline
+from evaluation.dataset import load_sroie
+from extractor.ocr.base import OcrLine
+from extractor.pipeline import Pipeline, build_pipeline, load_engine
 from extractor.fields.rules import RuleExtractor
 from extractor.schema import load_doctype
 
@@ -81,8 +82,8 @@ def test_run_and_write_reports(sroie_root, tmp_path):
     assert "| Pipeline |" in (output / "report.md").read_text(encoding="utf-8")
 
 
-def test_load_config():
-    config = run.load_config("e1")
+def test_load_engine():
+    config = load_engine("e1")
 
     assert config["name"] == "e1"
     assert build_pipeline(config, RECEIPT).ocr.name == "tesseract"

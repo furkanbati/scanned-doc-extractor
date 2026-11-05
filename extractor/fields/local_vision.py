@@ -8,7 +8,7 @@ import os
 
 from PIL import Image
 
-from extractor.dataset import OcrLine
+from extractor.ocr.base import OcrLine
 from extractor.fields.base import Extraction, Usage
 from extractor.fields.local_llm import DEFAULT_HOST, chat_with_retry
 from extractor.fields.prompt import instructions, json_schema, parse_fields

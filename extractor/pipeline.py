@@ -1,11 +1,31 @@
 from dataclasses import dataclass
+from pathlib import Path
 
+import yaml
 from PIL import Image
 
-from extractor.dataset import OcrLine
+from extractor.ocr.base import OcrLine
 from extractor.fields.base import FieldExtractor, Usage
 from extractor.ocr.base import OcrEngine
 from extractor.schema import DocumentType, Fields
+
+# One YAML file per engine: OCR, field extractor, model, prices, measured results.
+ENGINE_DIR = Path(__file__).parent / "engines"
+
+
+def engine_names() -> list[str]:
+    return sorted(path.stem for path in ENGINE_DIR.glob("*.yaml"))
+
+
+def load_engine(name: str | Path) -> dict:
+    """An engine by name (extractor/engines/<name>.yaml) or by file path."""
+
+    path = Path(name)
+    if not path.is_file():
+        path = ENGINE_DIR / f"{name}.yaml"
+
+    with path.open(encoding="utf-8") as file:
+        return yaml.safe_load(file)
 
 
 @dataclass(frozen=True)

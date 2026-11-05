@@ -4,10 +4,33 @@ Extracts the company, address, date and total from scanned receipts, and
 measures how well each approach works: classic OCR with rules, a CNN OCR, a
 cloud vision model and local models that keep the document on the machine.
 
-![UI: a receipt with the OCR lines behind each field outlined in the field's colour](docs/ui.jpg)
+![UI: two uploaded receipts, their fields in an editable table, Excel, CSV and JSON downloads](docs/ui.jpg)
 
 The receipt in the screenshot is synthetic ([docs/make_sample_receipt.py](docs/make_sample_receipt.py));
 dataset images are not part of this repository.
+
+## Use it
+
+```bash
+cp .env.example .env              # add OPENAI_API_KEY for the high-accuracy mode
+docker compose up --build -d      # UI on http://localhost:8501, API on :8000
+```
+
+1. Pick a mode. **High accuracy** sends the image to OpenAI (0.797 field accuracy,
+   $0.31 per 1,000 receipts). **Private** runs on the server and nothing leaves it
+   (0.631, free). Without an OpenAI key only the private mode is offered.
+2. Upload one or more receipt images or PDFs (first page is read, 10 MB each).
+   The button shows the estimated cost before anything is sent.
+3. Check the table. The *check* column flags fields that were not found, dates
+   that are not dates and totals that are not amounts; edit any cell to correct it.
+4. Download the table, with your corrections, as Excel, CSV or JSON. Rows to
+   check are highlighted in the Excel file.
+5. Pick a document to see it next to its fields; with OCR engines, the lines each
+   field came from are outlined in the field's colour.
+
+The modes are defined in [profiles.yaml](profiles.yaml); the numbers next to them
+are read from the evaluation reports. Under *Advanced* any engine (e1 ... e5) can be
+chosen directly, and the providers not built yet are listed as planned.
 
 ## Results (400 held-out SROIE receipts)
 
@@ -57,17 +80,20 @@ image ────────────────────────�
   extract, their type (text, date, amount) and a description. The model prompts
   and JSON schemas are built from this file, so a new document type is a new
   YAML file, not new code.
-- **Experiments** ([evaluation/configs](evaluation/configs)): one YAML file per
-  pipeline (OCR engine, field extractor, model, prices).
-- **Evaluation** ([evaluation](evaluation)): field accuracy, CER, speed, tokens and
-  cost per receipt; runs resume from a checkpoint if they stop.
+- **Engines** ([extractor/engines](extractor/engines)): one YAML file per
+  pipeline (OCR engine, field extractor, model, prices) with its measured results.
+- **Modes** ([profiles.yaml](profiles.yaml)): what the user picks; each mode runs
+  one engine.
+- **Evaluation** ([evaluation](evaluation)): how the numbers were measured. Loads
+  the dataset, runs an engine on it, reports field accuracy, CER, speed, tokens
+  and cost per receipt; runs resume from a checkpoint if they stop. The product
+  does not depend on it, and it is left out of the Docker images.
 
-## Run it
+## Reproduce the measurements
 
 ```bash
 bash scripts/download_sroie.sh              # SROIE with corrected labels, into data/
 cp .env.example .env                        # add OPENAI_API_KEY for e3
-docker compose up --build -d                # API on :8000, UI on :8501
 docker compose --profile test run --rm test python -m evaluation.run --config e2
 docker compose --profile test run --rm test python -m evaluation.compare
 docker compose --profile test run --rm test # unit tests
@@ -76,10 +102,16 @@ docker compose --profile test run --rm test # unit tests
 ## API
 
 ```
-GET  /methods                  available pipelines (e1 ... e5) and the default
-POST /extract  file, method    -> fields, normalized fields, OCR lines and boxes,
-                                  the lines behind each field, seconds, tokens, USD
+GET  /profiles                 modes, whether each can run here, measured accuracy and cost
+GET  /methods                  every engine (e1 ... e5) with the same details
+POST /extract  file            image or PDF; optional profile=accurate|private
+               [profile|method]  or method=e1...e5 (default: the default mode)
+               -> fields, normalized fields, fields to check, OCR lines and boxes,
+                  the lines behind each field, seconds, tokens, USD, page count
 ```
+
+An engine that cannot run on the server (no OpenAI key, no Ollama) is answered
+with 503 and the reason.
 
 ## Data
 
@@ -96,4 +128,7 @@ rules and the field descriptions. The 400 are not the official SROIE test set.
   multi-page documents and other document types are not measured yet.
 - The highlighted boxes in the UI mark every OCR line that contains a value; when a
   subtotal equals the total, both lines are outlined.
+- The *check* column only catches values that are missing or malformed. A
+  well-formed but wrong value, such as a misread company name, is not flagged.
+- Only the first page of a PDF is read.
 - E4 and E5 are not measured yet.

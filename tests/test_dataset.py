@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from extractor.dataset import load_sroie, parse_box_line, split_ids
+from evaluation.dataset import load_sroie, parse_box_line, split_ids
 
 
 def write_receipt(root, sample_id, key, box_lines):

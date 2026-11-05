@@ -3,7 +3,7 @@ from typing import Protocol
 
 from PIL import Image
 
-from extractor.dataset import OcrLine
+from extractor.ocr.base import OcrLine
 from extractor.schema import Fields
 
 

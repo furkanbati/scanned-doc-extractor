@@ -3,7 +3,7 @@ import importlib.util
 import pytest
 from PIL import Image, ImageDraw, ImageFont
 
-from extractor.dataset import OcrLine
+from extractor.ocr.base import OcrLine
 from extractor.ocr.base import lines_to_text, rect_box
 from extractor.ocr.rapid import group_into_lines
 

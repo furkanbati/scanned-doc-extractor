@@ -11,18 +11,13 @@ import random
 from dataclasses import dataclass
 from pathlib import Path
 
+from extractor.ocr.base import OcrLine
 from extractor.schema import DocumentType, Fields, load_doctype
 
 DEFAULT_ROOT = Path("data/sroie")
 SPLIT_SEED = 2019
 TEST_SIZE = 400
 SPLITS = ("test", "dev", "all")
-
-
-@dataclass(frozen=True)
-class OcrLine:
-    text: str
-    box: tuple[int, ...]  # x1, y1, ..., x4, y4, clockwise from top left
 
 
 @dataclass(frozen=True)

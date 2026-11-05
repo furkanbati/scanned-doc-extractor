@@ -1,0 +1,17 @@
+name: e2
+description: RapidOCR (PP-OCRv6 CNNs) on the raw image, rule and regex fields.
+doctype: receipt
+preprocess: none
+ocr: rapidocr
+ocr_options:
+  group_lines: true
+fields: rules
+
+# Results on the 400 test receipts (evaluation/results/e2/report.json).
+# Rerun the evaluation and update these when the engine changes.
+measured:
+  receipts: 400
+  field_accuracy: 0.630625
+  seconds_per_document: 3.57
+  usd_per_1000: 0.0
+  date: 2026-10-31

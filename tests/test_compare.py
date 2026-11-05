@@ -83,3 +83,41 @@ def test_comparison_report(tmp_path):
     assert "| e1: e1 test | 0.500 | 0.500 | **0.500** | 0.750 | 1.50 | 0 | no |" in report
     assert "| 0.30 | yes |" in report
     assert "| e1 | company | 1 | 0 | 0 | 0 | 1 |" in report
+
+
+REPORT = {
+    "receipts": 400,
+    "field_accuracy": {"company": 0.75, "mean": 0.7975},
+    "seconds_per_receipt": 7.156486,
+    "usd_per_receipt": 0.0003109,
+}
+
+
+def test_measured_numbers_that_match_the_report_pass():
+    config = {"measured": {"receipts": 400, "field_accuracy": 0.7975,
+                           "seconds_per_document": 7.16, "usd_per_1000": 0.3109}}
+
+    assert compare.stale_measurements("e3", REPORT, config) == []
+
+
+def test_measured_numbers_left_behind_after_a_rerun_are_reported():
+    config = {"measured": {"receipts": 400, "field_accuracy": 0.70,
+                           "seconds_per_document": 7.16, "usd_per_1000": 0.3109}}
+
+    assert compare.stale_measurements("e3", REPORT, config) == [
+        "e3: measured.field_accuracy is 0.7, the report says 0.7975"
+    ]
+
+
+def test_an_engine_without_measurements_is_reported():
+    problems = compare.stale_measurements("e4", REPORT, {"name": "e4"})
+
+    assert len(problems) == 4
+
+
+@pytest.mark.parametrize("name", ["e1", "e2", "e3"])
+def test_committed_engines_match_their_reports(name):
+    directory = compare.DEFAULT_RESULTS / name
+    report = json.loads((directory / "report.json").read_text(encoding="utf-8"))
+
+    assert compare.stale_measurements(name, report, compare.engine_config(name)) == []

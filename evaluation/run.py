@@ -14,17 +14,15 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-import yaml
 from PIL import Image
 
 from evaluation.metrics import corpus_cer, field_accuracy, field_matches
-from extractor.dataset import DEFAULT_ROOT, SPLITS, Sample, load_sroie
+from evaluation.dataset import DEFAULT_ROOT, SPLITS, Sample, load_sroie
 from extractor.ocr.base import lines_to_text
 from extractor.fields.base import Usage
-from extractor.pipeline import Pipeline, build_extractor, build_pipeline
+from extractor.pipeline import Pipeline, build_extractor, build_pipeline, load_engine
 from extractor.schema import DocumentType, Fields, load_doctype
 
-CONFIG_DIR = Path(__file__).parent / "configs"
 DEFAULT_OUTPUT = Path(__file__).parent / "results"
 
 
@@ -36,15 +34,6 @@ class SampleResult:
     seconds: float
     usage: Usage | None = None
     error: str | None = None
-
-
-def load_config(name: str) -> dict:
-    path = Path(name)
-    if not path.is_file():
-        path = CONFIG_DIR / f"{name}.yaml"
-
-    with path.open(encoding="utf-8") as file:
-        return yaml.safe_load(file)
 
 
 def result_to_json(result: SampleResult) -> dict:
@@ -362,7 +351,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    config = load_config(args.config)
+    config = load_engine(args.config)
     doctype = load_doctype(config["doctype"])
     pipeline = build_pipeline(config, doctype)
     samples = load_sroie(args.data, split=args.split, limit=args.limit, doctype=doctype)
