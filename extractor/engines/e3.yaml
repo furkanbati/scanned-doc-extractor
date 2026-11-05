@@ -11,3 +11,12 @@ fields_options:
 price_per_million_tokens:
   input: 0.10
   output: 0.50
+
+# Results on the 400 test receipts (evaluation/results/e3/report.json).
+# Rerun the evaluation and update these when the engine changes.
+measured:
+  receipts: 400
+  field_accuracy: 0.7975
+  seconds_per_document: 7.16
+  usd_per_1000: 0.3109
+  date: 2026-10-31

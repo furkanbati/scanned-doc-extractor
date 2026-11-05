@@ -1,4 +1,4 @@
-from extractor.dataset import OcrLine
+from extractor.ocr.base import OcrLine
 from extractor.schema import load_doctype
 from extractor.fields.rules import (
     extract_fields,

@@ -6,7 +6,7 @@ looking at the dev split only.
 
 import re
 
-from extractor.dataset import OcrLine
+from extractor.ocr.base import OcrLine
 from extractor.fields.base import Extraction
 from extractor.schema import (
     DAY_MONTH_YEAR,

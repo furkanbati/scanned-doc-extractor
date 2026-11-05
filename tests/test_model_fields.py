@@ -92,7 +92,7 @@ class FakeOllama:
 
 
 def test_local_llm_sends_ocr_text_and_schema():
-    from extractor.dataset import OcrLine
+    from extractor.ocr.base import OcrLine
     from extractor.fields.local_llm import LocalLLMExtractor
 
     client = FakeOllama()
