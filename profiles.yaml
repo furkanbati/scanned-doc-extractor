@@ -1,6 +1,6 @@
-# The modes a user picks from. Each mode runs one experiment config from
-# evaluation/configs; the accuracy, speed and cost shown next to it are read
-# from that experiment's report, not written here.
+# The modes a user picks from. Each mode runs one engine from
+# extractor/engines; the accuracy, speed and cost shown next to it come from
+# that engine's `measured` block.
 #
 # The first available mode in `order` is the default.
 

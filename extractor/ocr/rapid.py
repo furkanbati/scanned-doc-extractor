@@ -5,7 +5,7 @@ from importlib.metadata import version as package_version
 import numpy as np
 from PIL import Image
 
-from extractor.dataset import OcrLine
+from extractor.ocr.base import OcrLine
 from extractor.ocr.base import rect_box
 
 

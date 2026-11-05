@@ -1,11 +1,10 @@
 """What the service offers: modes for users, engines for experts, providers still planned.
 
-A mode (profiles.yaml) names the experiment config it runs. Whether an engine
+A mode (profiles.yaml) names the engine it runs (extractor/engines). Whether an engine
 can run here depends on this machine: the OpenAI engine needs a key, the
 local-model engines need an Ollama server.
 """
 
-import json
 import os
 import time
 import urllib.request
@@ -15,11 +14,10 @@ from pathlib import Path
 
 import yaml
 
-from evaluation.run import CONFIG_DIR, load_config
+from extractor.pipeline import engine_names, load_engine
 
 ROOT = Path(__file__).parent
 PROFILES_PATH = ROOT / "profiles.yaml"
-RESULTS_DIR = ROOT / "evaluation" / "results"
 
 CLOUD_EXTRACTORS = {"openai_vision"}
 OLLAMA_EXTRACTORS = {"local_llm", "local_vision"}
@@ -30,22 +28,10 @@ def load_profiles(path: Path = PROFILES_PATH) -> dict:
         return yaml.safe_load(file)
 
 
-def measured(method: str, results_dir: Path = RESULTS_DIR) -> dict | None:
-    """The method's numbers on the test receipts, or None if it was not run."""
+def measured(config: dict) -> dict | None:
+    """The engine's numbers on the test receipts, or None if it was not measured."""
 
-    path = results_dir / method / "report.json"
-    if not path.exists():
-        return None
-
-    report = json.loads(path.read_text(encoding="utf-8"))
-    usd = report.get("usd_per_receipt")
-
-    return {
-        "receipts": report["receipts"],
-        "field_accuracy": report["field_accuracy"]["mean"],
-        "seconds_per_document": report["seconds_per_receipt"],
-        "usd_per_1000": usd * 1000 if usd is not None else 0.0,
-    }
+    return config.get("measured")
 
 
 def ollama_reachable() -> bool:
@@ -90,10 +76,10 @@ def unavailable_reason(config: dict) -> str | None:
 def engines() -> dict[str, dict]:
     result = {}
 
-    for path in sorted(CONFIG_DIR.glob("*.yaml")):
-        config = load_config(path.stem)
+    for name in engine_names():
+        config = load_engine(name)
         reason = unavailable_reason(config)
-        result[path.stem] = {
+        result[name] = {
             "description": config.get("description", ""),
             "doctype": config["doctype"],
             "ocr": config["ocr"],
@@ -102,7 +88,7 @@ def engines() -> dict[str, dict]:
             "leaves_machine": config["fields"] in CLOUD_EXTRACTORS,
             "available": reason is None,
             "unavailable_reason": reason,
-            "measured": measured(path.stem),
+            "measured": measured(config),
         }
 
     return result

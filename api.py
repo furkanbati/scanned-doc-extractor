@@ -1,8 +1,7 @@
 """HTTP API: send a document image or PDF, get its fields back.
 
 Run with `uvicorn api:app`. Users pick a mode (profiles.yaml: "accurate",
-"private"); experts can name an engine directly, which is an experiment config
-in evaluation/configs (e1 ... e5).
+"private"); experts can name an engine directly (extractor/engines: e1 ... e5).
 """
 
 import io
@@ -14,9 +13,8 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from PIL import Image, UnidentifiedImageError
 
 import catalogue
-from evaluation.run import load_config
 from extractor.locate import locate_fields
-from extractor.pipeline import Pipeline, build_pipeline
+from extractor.pipeline import Pipeline, build_pipeline, load_engine
 from extractor.review import review_notes
 from extractor.schema import load_doctype
 
@@ -28,7 +26,7 @@ app = FastAPI(title="Scanned Document Extractor")
 
 @lru_cache(maxsize=None)
 def get_pipeline(method: str) -> Pipeline:
-    config = load_config(method)
+    config = load_engine(method)
 
     return build_pipeline(config, load_doctype(config["doctype"]))
 
@@ -111,7 +109,7 @@ async def extract(
         raise HTTPException(status_code=413, detail="File larger than 10 MB")
     image, pages = read_document(data)
 
-    config = load_config(method)
+    config = load_engine(method)
     doctype = load_doctype(config["doctype"])
 
     start = time.perf_counter()

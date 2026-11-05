@@ -80,17 +80,20 @@ image ────────────────────────�
   extract, their type (text, date, amount) and a description. The model prompts
   and JSON schemas are built from this file, so a new document type is a new
   YAML file, not new code.
-- **Experiments** ([evaluation/configs](evaluation/configs)): one YAML file per
-  pipeline (OCR engine, field extractor, model, prices).
-- **Evaluation** ([evaluation](evaluation)): field accuracy, CER, speed, tokens and
-  cost per receipt; runs resume from a checkpoint if they stop.
+- **Engines** ([extractor/engines](extractor/engines)): one YAML file per
+  pipeline (OCR engine, field extractor, model, prices) with its measured results.
+- **Modes** ([profiles.yaml](profiles.yaml)): what the user picks; each mode runs
+  one engine.
+- **Evaluation** ([evaluation](evaluation)): how the numbers were measured. Loads
+  the dataset, runs an engine on it, reports field accuracy, CER, speed, tokens
+  and cost per receipt; runs resume from a checkpoint if they stop. The product
+  does not depend on it, and it is left out of the Docker images.
 
-## Run it
+## Reproduce the measurements
 
 ```bash
 bash scripts/download_sroie.sh              # SROIE with corrected labels, into data/
 cp .env.example .env                        # add OPENAI_API_KEY for e3
-docker compose up --build -d                # API on :8000, UI on :8501
 docker compose --profile test run --rm test python -m evaluation.run --config e2
 docker compose --profile test run --rm test python -m evaluation.compare
 docker compose --profile test run --rm test # unit tests

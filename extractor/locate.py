@@ -1,6 +1,6 @@
 """Find which OCR lines an extracted value came from, to draw them on the image."""
 
-from extractor.dataset import OcrLine
+from extractor.ocr.base import OcrLine
 from extractor.schema import Fields, loose
 
 

@@ -7,7 +7,7 @@ from PIL import Image
 
 import api
 import catalogue
-from extractor.dataset import OcrLine
+from extractor.ocr.base import OcrLine
 from extractor.fields.base import Usage
 from extractor.locate import locate_fields
 from extractor.pipeline import PipelineResult

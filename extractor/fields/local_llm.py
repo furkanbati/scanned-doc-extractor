@@ -6,7 +6,7 @@ The document never leaves the machine.
 import os
 import time
 
-from extractor.dataset import OcrLine
+from extractor.ocr.base import OcrLine
 from extractor.fields.base import Extraction, Usage
 from extractor.fields.prompt import instructions, json_schema, parse_fields
 from extractor.ocr.base import lines_to_text

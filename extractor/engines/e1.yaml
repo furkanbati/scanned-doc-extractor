@@ -1,0 +1,17 @@
+name: e1
+description: Baseline. Tesseract on the raw image, rule and regex fields.
+doctype: receipt
+preprocess: none
+ocr: tesseract
+ocr_options:
+  lang: eng
+fields: rules
+
+# Results on the 400 test receipts (evaluation/results/e1/report.json).
+# Rerun the evaluation and update these when the engine changes.
+measured:
+  receipts: 400
+  field_accuracy: 0.46375
+  seconds_per_document: 1.34
+  usd_per_1000: 0.0
+  date: 2026-10-31

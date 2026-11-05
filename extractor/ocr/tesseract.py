@@ -2,7 +2,7 @@ import pytesseract
 from PIL import Image
 from pytesseract import Output
 
-from extractor.dataset import OcrLine
+from extractor.ocr.base import OcrLine
 from extractor.ocr.base import rect_box
 
 
