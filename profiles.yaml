@@ -1,0 +1,30 @@
+# The modes a user picks from. Each mode runs one experiment config from
+# evaluation/configs; the accuracy, speed and cost shown next to it are read
+# from that experiment's report, not written here.
+#
+# The first available mode in `order` is the default.
+
+order: [accurate, private]
+
+profiles:
+  accurate:
+    label: High accuracy
+    description: >-
+      A vision model reads the whole image. The image is sent to OpenAI.
+    method: e3
+
+  private:
+    label: Private
+    description: >-
+      Runs on this server; the image never leaves it. Good on dates and
+      totals, weaker on company names and addresses.
+    # Switch to e4 (local LLM) once it is measured on the 400 test receipts.
+    method: e2
+
+# Shown greyed out in the advanced panel, so it is clear what can be added.
+planned:
+  - Google Gemini
+  - Anthropic Claude
+  - Mistral OCR
+  - Azure AI Document Intelligence
+  - AWS Textract
