@@ -309,6 +309,21 @@ def test_indented_line_is_a_modifier_and_flags_review():
     assert result.needs_review
 
 
+def test_line_without_quantity_among_quantity_lines_is_a_modifier():
+    result = extract_line_items(
+        receipt(
+            row(100, (50, "1"), (70, "x"), (90, "CHOCO"), (150, "MT"), price="27,000"),
+            row(130, (90, "PEARL"), price="4,000"),
+            row(160, (50, "1"), (70, "x"), (90, "MANGO"), (150, "GT"), price="25,000"),
+            row(200, (50, "TOTAL"), price="56,000"),
+        )
+    )
+
+    assert amounts(result) == [D(27000), D(25000)]
+    assert result.items[0].modifiers == D(4000)
+    assert result.needs_review
+
+
 def test_free_line_is_an_item_but_flags_review():
     result = extract_line_items(
         receipt(

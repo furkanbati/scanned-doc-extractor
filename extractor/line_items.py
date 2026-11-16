@@ -597,10 +597,35 @@ def is_indented(row: Row, margin: tuple[float, float] | None) -> bool:
     return row.tokens[0].left - left >= height
 
 
+def _leading_quantity(row: Row) -> bool:
+    first = row.tokens[0].text
+
+    return bool(QUANTITY.match(first)) and not is_money(first)
+
+
+def _quantity_style(scanned: list[_ScannedRow]) -> bool:
+    """Most item lines open with a quantity ("1 NASI GORENG 25,000")."""
+
+    named = [
+        entry.row
+        for entry in scanned
+        if entry.amount is not None and entry.amount >= 0 and entry.kind is None and has_words(entry.row.text)
+    ]
+    with_quantity = sum(_leading_quantity(row) for row in named)
+
+    return with_quantity >= 2 and with_quantity >= 0.75 * len(named)
+
+
 def build_items(scanned: list[_ScannedRow]) -> list[LineItem]:
+    """Items of the item zone. A priced line is a modifier of the item above
+    (folded into it, not counted) when it opens with "+", is indented, or
+    has no quantity where the item lines have one ("PEARL (L) 4,000" under
+    "1 x MANGO GT (L) 25,000")."""
+
     items: list[LineItem] = []
     pending: list[str] = []
     margin = _item_margin(scanned)
+    quantity_style = _quantity_style(scanned)
 
     for entry in scanned:
         tokens = entry.row.tokens
@@ -633,7 +658,8 @@ def build_items(scanned: list[_ScannedRow]) -> list[LineItem]:
         if entry.kind is not None:
             continue
 
-        if tokens[0].text.startswith("+") or (items and is_indented(entry.row, margin)):
+        no_quantity = quantity_style and not pending and has_words(text) and not _leading_quantity(entry.row)
+        if tokens[0].text.startswith("+") or (items and (is_indented(entry.row, margin) or no_quantity)):
             if items:
                 items[-1].modifiers += entry.amount
             continue

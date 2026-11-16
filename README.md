@@ -122,6 +122,22 @@ are not in it. They are split once with a fixed seed into 400 test receipts,
 used only for the reported numbers, and 226 dev receipts, used to write the
 rules and the field descriptions. The 400 are not the official SROIE test set.
 
+### Line items (CORD)
+
+E2 also has rule-based line-item extraction ([extractor/line_items.py](extractor/line_items.py)):
+every purchased item with its amount, the subtotal, tax, service, discount and
+total, and a `needs_review` flag when the numbers do not add up. It is measured
+on [CORD v2](https://huggingface.co/datasets/naver-clova-ix/cord-v2)
+(Park et al., *CORD: A Consolidated Receipt Dataset for Post-OCR Parsing*,
+Document Intelligence Workshop at NeurIPS 2019; CC-BY-4.0), 1,000 Indonesian
+receipts. Results and error analysis: [reports/cord_line_items.md](reports/cord_line_items.md).
+
+```bash
+bash scripts/download_cord.sh                                   # 2.3 GB, into data/cord/
+python -m evaluation.cord_eval --mode oracle --split validation # dataset words as OCR
+python -m evaluation.cord_eval --mode e2e --split validation    # RapidOCR on the image
+```
+
 ## Limitations
 
 - Tested on printed English receipts from one country (Malaysia). Handwriting,
