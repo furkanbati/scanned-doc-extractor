@@ -353,6 +353,20 @@ def test_amount_computed_from_quantity_and_unit_when_not_printed():
     assert result.needs_review
 
 
+def test_name_without_amount_below_the_last_item_flags_review():
+    result = extract_line_items(
+        receipt(
+            row(100, (50, "BUN"), price="22.000"),
+            row(130, (50, "PLASTIC"), (130, "BAG")),
+            row(160, (150, "0"), (170, "x1"), (210, "C")),  # its amount "0" read as "C"
+            row(200, (50, "TOTAL"), price="22.000"),
+        )
+    )
+
+    assert amounts(result) == [D(22000)]
+    assert result.needs_review
+
+
 @pytest.mark.parametrize(
     "text, expected",
     [("0 x1", (1, 0)), ("15.000 x2", (2, 15000)), ("2 x 15.000", (2, 15000)), ("2 @ Rp 15.000", (2, 15000)), ("TEA 2", None)],

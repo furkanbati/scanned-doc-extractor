@@ -690,6 +690,27 @@ def build_items(scanned: list[_ScannedRow]) -> list[LineItem]:
     return items
 
 
+def _unpriced_tail(zone: list[_ScannedRow]) -> bool:
+    """After the last amount of the item zone, a name line followed by a line
+    of numbers only: an item whose amount was not read ("Plastic Bag" over
+    "0 x1" with its "0" lost). A name alone is a note or a modifier."""
+
+    last = max((position for position, entry in enumerate(zone) if entry.amount is not None), default=None)
+    if last is None:
+        return False
+
+    named = False
+    for entry in zone[last + 1:]:
+        if entry.kind is not None:
+            continue
+        if has_words(entry.row.text):
+            named = True
+        elif named and re.search(r"\d", entry.row.text):
+            return True
+
+    return False
+
+
 # --- 5. Totals and reconciliation ------------------------------------------
 
 # Totals are often rounded (55,834 printed, 55,800 paid): sums that differ by
@@ -914,6 +935,9 @@ def extract_line_items(lines: list[OcrLine]) -> LineItemResult:
     )
 
     reconcile(result)
+    if items and _unpriced_tail(scanned[:end]):
+        result.reasons.append("a name below the last item has no amount")
+        result.needs_review = True
     if found_by == "arithmetic":
         result.reasons.append("total found by arithmetic, not by a TOTAL line")
         result.needs_review = True
