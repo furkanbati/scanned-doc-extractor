@@ -29,3 +29,4 @@ evaluation/results/**/checkpoint.jsonl
 
 # Personal development log (Turkish), not part of the project
 notes/
+evaluation/results/**/*.receipts.jsonl
