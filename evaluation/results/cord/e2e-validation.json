@@ -12,7 +12,7 @@
   "amount_precision": 0.8977777777777778,
   "amount_recall": 0.9181818181818182,
   "amount_f1": 0.9078651685393259,
-  "seconds_per_receipt": 1.5828403270011768,
+  "seconds_per_receipt": 1.58278227300063,
   "errors": {
     "ocr": 9,
     "subtotal_as_item": 5,
