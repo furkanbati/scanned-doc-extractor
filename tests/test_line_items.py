@@ -458,6 +458,36 @@ def test_total_paid_wins_over_an_earlier_total_line():
     assert result.total == D(55800)
 
 
+def test_total_before_tax_is_a_subtotal_when_the_sum_is_printed_below():
+    result = extract_line_items(
+        receipt(
+            row(100, (50, "ISI"), (90, "CAMPUR"), price="43.636"),
+            row(130, (50, "AGUA"), price="9.000"),
+            row(170, (50, "TOTAL"), price="52.636"),
+            row(200, (50, "TAX"), (100, "10%"), price="5.264"),
+            row(230, (50, "GR"), (80, "TTAL"), price="57.900"),  # TOTAL misread
+            row(260, (50, "TUNAI"), price="60.000"),
+        )
+    )
+
+    assert result.total == D(57900)
+    assert result.subtotal == D(52636)
+    assert result.needs_review  # found by arithmetic
+
+
+def test_later_total_that_does_not_add_up_flags_review():
+    result = extract_line_items(
+        receipt(
+            row(100, (50, "PASTA"), price="366.000"),
+            row(140, (50, "TOTAL"), price="366.000"),
+            row(170, (50, "SERY."), (110, "CHARGE"), price="18.300"),  # SERVICE misread
+            row(200, (50, "TOTAL"), (110, "RUPIAH"), price="384.300"),
+        )
+    )
+
+    assert result.needs_review
+
+
 def test_missing_total_flags_review():
     result = extract_line_items(receipt(row(100, (50, "TEA"), price="5,000"), row(130, (50, "COFFEE"), price="9,000")))
 

@@ -3,19 +3,19 @@
   "split": "validation",
   "receipts": 100,
   "item_count_accuracy": 0.89,
-  "item_amount_accuracy": 0.9638009049773756,
+  "item_amount_accuracy": 0.9592760180995475,
   "total_accuracy": 1.0,
-  "required_value_accuracy": 0.954653937947494,
+  "required_value_accuracy": 0.9522673031026253,
   "receipts_fully_correct": 0.87,
   "needs_review_rate": 0.23,
   "silent_error_rate": 0.04,
-  "amount_precision": 0.9429824561403509,
-  "amount_recall": 0.9772727272727273,
-  "amount_f1": 0.9598214285714287,
-  "seconds_per_receipt": 0.0003363679978065193,
+  "amount_precision": 0.9466666666666667,
+  "amount_recall": 0.9681818181818181,
+  "amount_f1": 0.9573033707865168,
+  "seconds_per_receipt": 0.0003714700005366467,
   "errors": {
-    "subtotal_as_item": 3,
-    "missed_row": 3,
+    "subtotal_as_item": 2,
+    "missed_row": 4,
     "extra_row": 5
   }
 }

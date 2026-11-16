@@ -330,16 +330,18 @@ def find_amount_column(rows: list[Row]) -> Column | None:
         return None
 
     tolerance = 1.5 * statistics.median(heights)
-    def edges_of(test) -> list[float]:
+    def edges_of(candidates: list[Row]) -> list[float]:
         return sorted(
             money[-1].right
-            for row in rows
-            if (money := [token for token in row.tokens if test(token.text)])
+            for row in candidates
+            if (money := [token for token in row.tokens if _amount_like(token.text)])
         )
 
     # Each row's rightmost amount: a line total is printed right of the
     # quantity and unit price, whatever their format ("1.00 48000 48000").
-    edges = edges_of(_amount_like)
+    # Summary lines (TOTAL, CASH, CHANGE) are left out, or on a receipt with
+    # one item they would outvote it when printed in a column of their own.
+    edges = edges_of([row for row in rows if classify_row(row.text) is None]) or edges_of(rows)
     if not edges:
         return None
 
@@ -798,13 +800,38 @@ def summarize_rows(entries: list[_ScannedRow], items_sum: Decimal) -> tuple[_Sum
         summary = _adjustments(entries[:position], items_sum)
         return summary, summary.expected_total(items_sum)
 
-    chosen = next((p for p in totals if entries[p].amount == paid), None)
+    chosen, found_by = next((p for p in totals if entries[p].amount == paid), None), "line"
     if chosen is None:
         fitting = [p for p in totals if adds_up(entries[p].amount, expected_at(p)[1])]
-        chosen = fitting[-1] if fitting else None
+        if fitting:
+            chosen = fitting[-1]
+            # A later TOTAL line that does not add up: the one chosen may be
+            # a pre-tax total. Keep it, but a person checks.
+            if chosen != totals[-1]:
+                found_by = "superseded"
 
     if chosen is not None:
-        return expected_at(chosen)[0], entries[chosen].amount, "line"
+        summary = expected_at(chosen)[0]
+        total = entries[chosen].amount
+
+        # Tax or service printed below the TOTAL line (before payment): that
+        # line was a subtotal when a later line prints it plus them.
+        below = []
+        for entry in entries[chosen + 1:]:
+            if entry.kind in ("payment", "change"):
+                break
+            if entry.kind in ("tax", "service"):
+                below.append(entry.amount)
+        if below:
+            target = total + sum(below, Decimal(0))
+            later = [e.amount for e in entries[chosen + 1:] if e.kind in (None, "total", "payment")]
+            if target in later or target == paid:
+                summary = _adjustments(entries, items_sum)
+                summary.subtotal = total
+                return summary, target, "arithmetic"
+            found_by = "superseded"
+
+        return summary, total, found_by
 
     # No TOTAL line adds up (none printed, or its amount misread: "000.800").
     # An unlabelled or payment line printing the expected sum is the total;
@@ -889,6 +916,9 @@ def extract_line_items(lines: list[OcrLine]) -> LineItemResult:
     reconcile(result)
     if found_by == "arithmetic":
         result.reasons.append("total found by arithmetic, not by a TOTAL line")
+        result.needs_review = True
+    elif found_by == "superseded":
+        result.reasons.append("lines below the TOTAL line (a later total, tax) do not add up with it")
         result.needs_review = True
 
     return result
