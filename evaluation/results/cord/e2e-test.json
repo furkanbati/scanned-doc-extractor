@@ -1,0 +1,25 @@
+{
+  "mode": "e2e",
+  "split": "test",
+  "receipts": 100,
+  "item_count_accuracy": 0.69,
+  "item_amount_accuracy": 0.7569721115537849,
+  "total_accuracy": 0.8736842105263158,
+  "required_value_accuracy": 0.7668161434977578,
+  "receipts_fully_correct": 0.62,
+  "needs_review_rate": 0.53,
+  "silent_error_rate": 0.03,
+  "amount_precision": 0.8410852713178295,
+  "amount_recall": 0.8821138211382114,
+  "amount_f1": 0.8611111111111112,
+  "seconds_per_receipt": 1.6920786629989744,
+  "errors": {
+    "missed_row": 14,
+    "extra_row": 10,
+    "subtotal_as_item": 7,
+    "ocr": 12,
+    "total": 12,
+    "number": 1,
+    "wrong_row": 1
+  }
+}
