@@ -290,6 +290,33 @@ def test_free_line_is_an_item_but_flags_review():
     assert result.needs_review
 
 
+def test_amount_computed_from_quantity_and_unit_when_not_printed():
+    result = extract_line_items(
+        receipt(
+            row(100, (50, "BUN")),
+            row(130, (150, "22.000"), (230, "x1"), price="22.000"),
+            row(160, (50, "PLASTIC"), (130, "BAG")),
+            row(190, (150, "0"), (170, "x1")),  # the amount "0" not read
+            row(230, (50, "TOTAL"), price="22.000"),
+        )
+    )
+
+    assert amounts(result) == [D(22000), D(0)]
+    assert result.items[1].name == "PLASTIC BAG" and result.items[1].derived
+    assert result.needs_review
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [("0 x1", (1, 0)), ("15.000 x2", (2, 15000)), ("2 x 15.000", (2, 15000)), ("2 @ Rp 15.000", (2, 15000)), ("TEA 2", None)],
+)
+def test_quantity_times_unit(text, expected):
+    from extractor.line_items import quantity_times_unit
+
+    found = quantity_times_unit(text)
+    assert found == (None if expected is None else (D(expected[0]), D(expected[1])))
+
+
 # --- reconciliation ---------------------------------------------------------
 
 
@@ -358,6 +385,16 @@ def test_rounded_total_still_adds_up():
 
     assert result.total == D(55800)
     assert not result.needs_review, result.reasons
+
+
+@pytest.mark.parametrize(
+    "found, expected, result",
+    [(55800, 55834, True), (32000, 31999, True), (121768, 121798, False), (55834, 55834, True), (50000, 55834, False)],
+)
+def test_adds_up_accepts_rounding_not_misreads(found, expected, result):
+    from extractor.line_items import adds_up
+
+    assert adds_up(D(found), D(expected)) is result
 
 
 def test_total_paid_wins_over_an_earlier_total_line():

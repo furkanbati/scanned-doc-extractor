@@ -50,7 +50,7 @@ ROW_KEYWORDS: dict[str, str] = {
     "discount": r"\b(?:DISC\w*|DISKON|POTONGAN|PROMO\w*|HEMAT|SAVINGS?)\b",
     "rounding": r"\b(?:ROUNDING|PEMBULATAN|ROUND)\b",
     "subtotal": r"\bSUB\s*[-.]?\s*(?:TOTAL|TTL)\b|\bSUBTOTAL\b|\bSUBTTL\b",
-    "tax": r"\b(?:TAX|PB\s*-?\s*1|PPN|VAT|PAJAK|PBJT|RESTO\s*TAX)\b",
+    "tax": r"\b(?:TAX|P[B8]\s*-?\s*1|PPN|VAT|PAJAK|PBJT|RESTO\s*TAX)\b",
     "service": r"\b(?:SERVICE|SERVIS|SERV|SVC|S\s*/?\s*C|S\.C\.?|SRV)\b",
     "total": r"\b(?:GRAND\s*TOTAL|TOTAL|TTL|JUMLAH|TAGIHAN|AMOUNT\s*DUE|NETT?O?|DUE)\b",
 }
@@ -62,6 +62,9 @@ COMPILED = {kind: re.compile(pattern, re.IGNORECASE) for kind, pattern in ROW_KE
 WORD = re.compile(r"[A-Za-z]{2,}")
 CURRENCY = re.compile(r"\b(?:RP|IDR)\b\.?", re.IGNORECASE)
 QUANTITY = re.compile(r"^(?:[xX]\s*)?(\d{1,3})(?:[.,]0{1,2})?\s*[xX]?$")
+# "15.000 x2", "0 x1", "2 x 15.000", "2 @ 15.000": a quantity and a unit price, nothing else.
+UNIT_TIMES_QUANTITY = re.compile(r"^(?P<unit>\d[\d.,]*)\s*[xX]\s*(?P<quantity>\d{1,3})$")
+QUANTITY_TIMES_UNIT = re.compile(r"^(?P<quantity>\d{1,3})\s*[xX@]\s*(?P<unit>\d[\d.,]*)$")
 MAX_SKEW_DEGREES = 15
 
 
@@ -108,6 +111,8 @@ class LineItem:
     discount: Decimal = Decimal(0)
     modifiers: Decimal = Decimal(0)
     row: int = 0
+    # The amount was computed from quantity x unit price, not read.
+    derived: bool = False
 
     @property
     def quantity_checks(self) -> bool | None:
@@ -255,8 +260,43 @@ def group_rows(tokens: list[Token], overlap: float = 0.5) -> list[Row]:
 
     for row in rows:
         row.tokens.sort(key=lambda token: token.left)
+        row.tokens = join_split_numbers(row.tokens)
 
     return sorted(rows, key=lambda row: (row.top + row.bottom) / 2)
+
+
+THOUSANDS_GROUP = re.compile(r"^\d{3}(?:[.,]\d{1,2})?$")
+NUMBER_HEAD = re.compile(r"^(?:RP\.?)?-?\d{1,3}(?:[.,]\d{3})*[.,]?$", re.IGNORECASE)
+
+
+def join_split_numbers(tokens: list[Token]) -> list[Token]:
+    """Join a number OCR split at a thousands gap: "20" "000" -> "20000",
+    "121," "768" -> "121,768". The second part must be one three-digit group
+    starting within one line height of the first; a single digit opening the
+    line is a quantity and stays apart ("1 500")."""
+
+    joined: list[Token] = []
+
+    for token in tokens:
+        previous = joined[-1] if joined else None
+        if (
+            previous is not None
+            and NUMBER_HEAD.match(previous.text)
+            and THOUSANDS_GROUP.match(token.text)
+            and token.left - previous.right <= previous.height
+            and not (len(joined) == 1 and re.fullmatch(r"\d", previous.text))
+        ):
+            joined[-1] = Token(
+                text=previous.text + token.text,
+                left=previous.left,
+                right=token.right,
+                top=min(previous.top, token.top),
+                bottom=max(previous.bottom, token.bottom),
+            )
+        else:
+            joined.append(token)
+
+    return joined
 
 
 def _collides(token: Token, row: Row) -> bool:
@@ -391,6 +431,21 @@ def classify_row(text: str) -> str | None:
         return min(found)[1]
 
     return "count" if COMPILED["count"].search(text) else None
+
+
+def quantity_times_unit(text: str) -> tuple[Decimal, Decimal] | None:
+    """(quantity, unit price) of a line that holds only those two."""
+
+    text = CURRENCY.sub(" ", text).strip()
+    match = UNIT_TIMES_QUANTITY.match(text) or QUANTITY_TIMES_UNIT.match(text)
+    if not match:
+        return None
+
+    unit_price = parse_amount(match.group("unit"))
+    if unit_price is None:
+        return None
+
+    return Decimal(match.group("quantity")), unit_price
 
 
 def has_words(text: str) -> bool:
@@ -549,6 +604,19 @@ def build_items(scanned: list[_ScannedRow]) -> list[LineItem]:
         if entry.amount is None:
             if has_words(text) and entry.kind is None:
                 pending.append(text)
+            elif pending and entry.kind is None and (derived := quantity_times_unit(text)):
+                # "0 x1" under a name, its amount not printed (or not read).
+                quantity, unit_price = derived
+                items.append(
+                    LineItem(
+                        name=pending.pop(),
+                        amount=quantity * unit_price,
+                        quantity=quantity,
+                        unit_price=unit_price,
+                        row=entry.index,
+                        derived=True,
+                    )
+                )
             continue
 
         # A discount line, or any negative amount, reduces the item above it.
@@ -597,8 +665,25 @@ ROUNDING_SHARE = Decimal("0.002")
 ADJUSTMENT_KINDS = ("tax", "service", "rounding", "discount")
 
 
+def _trailing_zeros(value: Decimal) -> int:
+    digits = str(abs(value.normalize()).quantize(Decimal(1))) if value == value.to_integral() else "1"
+
+    return len(digits) - len(digits.rstrip("0")) if digits != "0" else 0
+
+
 def adds_up(found: Decimal, expected: Decimal) -> bool:
-    return abs(found - expected) <= ROUNDING_SHARE * max(abs(found), abs(expected))
+    """Equal, or rounded: close to the sum and rounder than it (55,834 -> 55,800).
+
+    A misread digit (121,798 read as 121,768) is close but not rounder, so it
+    does not add up.
+    """
+
+    if found == expected:
+        return True
+
+    close = abs(found - expected) <= ROUNDING_SHARE * max(abs(found), abs(expected))
+
+    return close and _trailing_zeros(found) > _trailing_zeros(expected)
 
 
 @dataclass
@@ -685,19 +770,24 @@ def summarize_rows(entries: list[_ScannedRow], items_sum: Decimal) -> tuple[_Sum
     chosen = next((p for p in totals if entries[p].amount == paid), None)
     if chosen is None:
         fitting = [p for p in totals if adds_up(entries[p].amount, expected_at(p)[1])]
-        chosen = fitting[-1] if fitting else (totals[-1] if totals else None)
+        chosen = fitting[-1] if fitting else None
 
     if chosen is not None:
         return expected_at(chosen)[0], entries[chosen].amount, "line"
 
+    # No TOTAL line adds up (none printed, or its amount misread: "000.800").
+    # An unlabelled or payment line printing the expected sum is the total;
+    # failing that, the last TOTAL line, which reconciliation will flag.
     summary = _adjustments(entries, items_sum)
     expected = summary.expected_total(items_sum)
-    # An unlabelled line that adds up, or one only arithmetic called a subtotal.
     if any(
         (e.kind in (None, "payment", "total") or e.inferred) and e.amount == expected
         for e in entries
     ):
         return summary, expected, "arithmetic"
+
+    if totals:
+        return expected_at(totals[-1])[0], entries[totals[-1]].amount, "line"
 
     return summary, None, "none"
 
@@ -725,6 +815,9 @@ def reconcile(result: LineItemResult) -> None:
         # Free lines are items on some receipts and modifiers on others;
         # the sums cannot tell, so a person decides.
         reasons.append("a free (0) line may be an item or a modifier")
+
+    if any(item.derived for item in result.items):
+        reasons.append("an amount was computed from quantity x unit price, not read")
 
     if any(item.modifiers for item in result.items):
         reasons.append("modifier lines were folded into the item above")
