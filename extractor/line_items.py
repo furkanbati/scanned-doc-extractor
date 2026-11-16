@@ -51,7 +51,7 @@ ROW_KEYWORDS: dict[str, str] = {
     "rounding": r"\b(?:ROUNDING|PEMBULATAN|ROUND)\b",
     "subtotal": r"\bSUB\s*[-.]?\s*(?:TOTAL|TTL)\b|\bSUBTOTAL\b|\bSUBTTL\b",
     "tax": r"\b(?:TAX|P[B8]\s*-?\s*1|PPN|VAT|PAJAK|PBJT|RESTO\s*TAX)\b",
-    "service": r"\b(?:SERVICE|SERVIS|SERV|SVC|S\s*/?\s*C|S\.C\.?|SRV)\b",
+    "service": r"\b(?:SERVICE|SERVIS|SERV|SVC|S\s*/\s*C|S\.C\.?|SRV)\b",
     "total": r"\b(?:GRAND\s*TOTAL|TOTAL|TTL|JUMLAH|TAGIHAN|AMOUNT\s*DUE|NETT?O?|DUE)\b",
 }
 FIRST_KINDS = ("total_count", "discount", "rounding")
@@ -337,8 +337,9 @@ def find_amount_column(rows: list[Row]) -> Column | None:
             if (money := [token for token in row.tokens if test(token.text)])
         )
 
-    # Thousands-grouped amounts first; receipts printing "25000" have none.
-    edges = edges_of(is_money) or edges_of(_amount_like)
+    # Each row's rightmost amount: a line total is printed right of the
+    # quantity and unit price, whatever their format ("1.00 48000 48000").
+    edges = edges_of(_amount_like)
     if not edges:
         return None
 
@@ -536,9 +537,11 @@ def _item_zone_end(scanned: list[_ScannedRow]) -> int:
     """Position of the first summary row: a keyword row with an amount, or an
     unlabelled row that equals the sum of the amounts above it.
 
-    With a single item above, a row with the same amount could be a second
-    item at the same price; it is a sum only when a payment or change line
-    follows (a TOTAL line below would be the sum instead).
+    A sum must be followed by summary lines, not by more items: an item can
+    cost exactly what the items above it add up to. With a single item
+    above, a row with the same amount could be a second item at the same
+    price; it is a sum only when a payment or change line follows (a TOTAL
+    line below would be the sum instead).
     """
 
     running, count = Decimal(0), 0
@@ -552,7 +555,9 @@ def _item_zone_end(scanned: list[_ScannedRow]) -> int:
 
         if entry.kind is None and count >= 1 and entry.amount == running:
             following = scanned[amounts[order + 1]] if order + 1 < len(amounts) else None
-            if count >= 2 or (following is not None and following.kind in ("payment", "change")):
+            if following is None or following.kind in ("payment", "change") or (
+                count >= 2 and following.kind in SUMMARY_KINDS
+            ):
                 entry.kind, entry.inferred = "subtotal", True
                 return position
 
