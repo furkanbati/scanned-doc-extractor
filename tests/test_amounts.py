@@ -43,7 +43,9 @@ def test_same_value_in_both_separator_styles():
     assert parse_amount("45,500") == parse_amount("45.500") == parse_amount("45500")
 
 
-@pytest.mark.parametrize("token", ["16,500", "1.591.600", "9.999,99", "12.50", "Rp.41.580", "-2,000", "1,400-", "@15.000"])
+@pytest.mark.parametrize(
+    "token", ["16,500", "1.591.600", "9.999,99", "12.50", "Rp.41.580", "-2,000", "1,400-", "@15.000", ".20,000", "�12,273"]
+)
 def test_is_money(token):
     assert is_money(token)
 

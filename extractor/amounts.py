@@ -18,13 +18,16 @@ SEPARATORS = ".,"
 # A token that is clearly money: thousands groups or a decimal part.
 # Plain integers ("15000", "9") are numbers too, but only count as money when
 # they line up with other amounts (see extractor/line_items.py).
+# Up to two stray marks around a number are allowed: a sign, a bracket, or
+# OCR noise such as ".20,000" or "£12,273".
+EDGE = r"[^0-9A-Za-z]{0,2}"
 STRONG_MONEY = re.compile(
-    r"^[(\-]?(?:RP\.?|IDR|@)?\s*-?"
+    rf"^{EDGE}(?:RP\.?|IDR|@)?\s*{EDGE}"
     r"(?:\d{1,3}(?:[.,]\d{3})+(?:[.,]\d{1,2})?|\d+[.,]\d{2})"
-    r"\s*-?\)?$",
+    rf"\s*{EDGE}$",
     re.IGNORECASE,
 )
-PLAIN_NUMBER = re.compile(r"^[(\-]?(?:RP\.?|IDR|@)?\s*-?\d+\s*-?\)?$", re.IGNORECASE)
+PLAIN_NUMBER = re.compile(rf"^{EDGE}(?:RP\.?|IDR|@)?\s*{EDGE}\d+\s*{EDGE}$", re.IGNORECASE)
 
 
 def _to_decimal(number: str) -> Decimal | None:
