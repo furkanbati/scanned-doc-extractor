@@ -151,14 +151,56 @@ def format_summary(summary: dict) -> str:
     return "\n".join(f"{label:32} {value}" for label, value in rows) + f"\nErrors: {errors}"
 
 
+TABLE_COLUMNS = (
+    ("Item count", "item_count_accuracy"),
+    ("Item amounts", "item_amount_accuracy"),
+    ("Total", "total_accuracy"),
+    ("Required values", "required_value_accuracy"),
+    ("Receipts fully right", "receipts_fully_correct"),
+    ("needs_review", "needs_review_rate"),
+    ("Silent errors", "silent_error_rate"),
+    ("Amount F1", "amount_f1"),
+    ("s/receipt", "seconds_per_receipt"),
+)
+
+
+def results_table(output: Path) -> str:
+    """Markdown table of every saved mode/split summary, for the report."""
+
+    header = "| Mode | Split | Receipts | " + " | ".join(name for name, _ in TABLE_COLUMNS) + " |"
+    lines = [header, "|" + "---|" * (len(TABLE_COLUMNS) + 3)]
+
+    for mode in MODES:
+        for split in SPLITS:
+            path = output / f"{mode}-{split}.json"
+            if not path.is_file():
+                continue
+            summary = json.loads(path.read_text(encoding="utf-8"))
+            cells = []
+            for _, key in TABLE_COLUMNS:
+                value = summary[key]
+                cells.append(f"{value:.2f}" if key == "seconds_per_receipt" else f"{value:.3f}")
+            lines.append(f"| {mode} | {split} | {summary['receipts']} | " + " | ".join(cells) + " |")
+
+    return "\n".join(lines)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--mode", choices=MODES, required=True)
-    parser.add_argument("--split", choices=SPLITS, required=True)
+    parser.add_argument("--mode", choices=MODES)
+    parser.add_argument("--split", choices=SPLITS)
     parser.add_argument("--root", type=Path, default=DEFAULT_ROOT)
     parser.add_argument("--limit", type=int)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument("--table", action="store_true", help="print the saved results as a markdown table")
     args = parser.parse_args()
+
+    if args.table:
+        print(results_table(args.output))
+        return
+
+    if not (args.mode and args.split):
+        parser.error("--mode and --split are required (or --table)")
 
     summary = run(args.mode, args.split, args.root, args.limit, args.output)
     print(f"{args.mode} / {args.split}")
