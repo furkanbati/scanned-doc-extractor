@@ -550,7 +550,7 @@ def _item_zone_end(scanned: list[_ScannedRow]) -> int:
     for order, position in enumerate(amounts):
         entry = scanned[position]
 
-        if entry.kind in SUMMARY_KINDS and count > 0:
+        if entry.kind in SUMMARY_KINDS:
             return position
 
         if entry.kind is None and count >= 1 and entry.amount == running:
@@ -811,7 +811,7 @@ def summarize_rows(entries: list[_ScannedRow], items_sum: Decimal) -> tuple[_Sum
     # failing that, the last TOTAL line, which reconciliation will flag.
     summary = _adjustments(entries, items_sum)
     expected = summary.expected_total(items_sum)
-    if any(
+    if paid == expected or any(
         (e.kind in (None, "payment", "total") or e.inferred) and e.amount == expected
         for e in entries
     ):
