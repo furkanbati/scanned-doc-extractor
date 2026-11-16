@@ -144,6 +144,9 @@ def test_amount_column_with_ungrouped_amounts():
         ("ITEMS: 3", "count"),
         ("ITEM: 3 SUBTOTAL 24,500", "subtotal"),
         ("NASI GORENG 25,000", None),
+        ("S/C 5% 1,250", "service"),
+        ("1 SC/P SUPER SUPREME 47,273", None),
+        ("P81 11,073", "tax"),
     ],
 )
 def test_classify_row(text, kind):
@@ -220,6 +223,35 @@ def test_unlabelled_sum_ends_the_items():
 
     assert amounts(result) == [D(5000), D(7000), D(8000)]
     assert result.total == D(20000)
+
+
+def test_item_equal_to_the_sum_above_is_still_an_item_when_items_follow():
+    result = extract_line_items(
+        receipt(
+            row(100, (50, "1"), (70, "DUMPLING"), price="9.000"),
+            row(130, (50, "1"), (70, "JAMUR"), price="8.000"),
+            row(160, (50, "1"), (70, "CAISIM"), price="7.000"),
+            row(190, (50, "2"), (70, "LAPCHIONG"), (400, "12000"), price="24.000"),
+            row(220, (50, "1"), (70, "BIHUN"), price="8.000"),
+            row(260, (50, "SUBTOTAL"), price="56.000"),
+            row(290, (50, "TOTAL"), price="56.000"),
+        )
+    )
+
+    assert amounts(result) == [D(9000), D(8000), D(7000), D(24000), D(8000)]
+    assert not result.needs_review, result.reasons
+
+
+def test_amount_column_is_the_rightmost_even_when_quantities_have_decimals():
+    result = extract_line_items(
+        receipt(
+            row(100, (50, "SPAGHETTI"), (350, "1.00"), (450, "48000"), price="48000"),
+            row(130, (50, "KATSUDON"), (350, "1.00"), (450, "58000"), price="58000"),
+            row(170, (50, "TOTAL"), price="106.000"),
+        )
+    )
+
+    assert amounts(result) == [D(48000), D(58000)]
 
 
 def test_same_price_twice_is_two_items_without_a_summary_after():
