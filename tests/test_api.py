@@ -202,3 +202,55 @@ def test_locate_fields():
     )
 
     assert located == {"company": [0], "address": [1, 2], "total": [4], "date": []}
+
+
+def test_extract_without_line_items_says_so(client):
+    body = client.post("/extract", files={"file": ("r.png", png_bytes())}).json()
+
+    assert body["line_items"] is None
+
+
+def test_extract_returns_line_items(client, monkeypatch):
+    from decimal import Decimal
+
+    from extractor.fields.line_items import LineItem, LineItemResult
+
+    class WithItems:
+        def run(self, image):
+            return PipelineResult(
+                fields={"total": "57.900"},
+                lines=[line("TOTAL 57.900")],
+                line_items=LineItemResult(
+                    items=[
+                        LineItem(name="ISI CAMPUR", amount=Decimal(43636), quantity=Decimal(1), unit_price=Decimal(43636)),
+                        LineItem(name="AQUA BOTOL", amount=Decimal(9000)),
+                    ],
+                    subtotal=Decimal(52636),
+                    tax=Decimal(5264),
+                    total=Decimal(57900),
+                    needs_review=True,
+                    reasons=["total found by arithmetic, not by a TOTAL line"],
+                ),
+            )
+
+    monkeypatch.setattr(api, "get_pipeline", lambda method: WithItems())
+
+    body = client.post("/extract", files={"file": ("r.png", png_bytes())}, data={"method": "e2"}).json()
+    items = body["line_items"]
+
+    assert [item["name"] for item in items["items"]] == ["ISI CAMPUR", "AQUA BOTOL"]
+    assert items["items"][0] == {"name": "ISI CAMPUR", "amount": "43636", "quantity": "1", "unit_price": "43636"}
+    assert items["items"][1]["quantity"] is None
+    assert items["subtotal"] == "52636" and items["tax"] == "5264" and items["total"] == "57900"
+    assert items["needs_review"] is True
+    assert items["reasons"] == ["total found by arithmetic, not by a TOTAL line"]
+
+
+def test_methods_and_modes_say_which_read_line_items(client):
+    engines = client.get("/methods").json()["methods"]
+    profiles = client.get("/profiles").json()["profiles"]
+
+    assert engines["e2"]["line_items"] is True
+    assert engines["e3"]["line_items"] is False
+    assert profiles["private"]["line_items"] is True
+    assert profiles["accurate"]["line_items"] is False

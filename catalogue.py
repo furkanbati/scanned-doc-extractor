@@ -14,7 +14,8 @@ from pathlib import Path
 
 import yaml
 
-from extractor.pipeline import engine_names, load_engine
+from extractor.pipeline import engine_names, load_engine, reads_line_items
+from extractor.schema import load_doctype
 
 ROOT = Path(__file__).parent
 PROFILES_PATH = ROOT / "profiles.yaml"
@@ -86,6 +87,8 @@ def engines() -> dict[str, dict]:
             "fields": config["fields"],
             "model": config.get("fields_options", {}).get("model"),
             "leaves_machine": config["fields"] in CLOUD_EXTRACTORS,
+            # Returns purchased items with their amounts next to the fields.
+            "line_items": reads_line_items(config, load_doctype(config["doctype"])),
             "available": reason is None,
             "unavailable_reason": reason,
             "measured": measured(config),
@@ -108,6 +111,7 @@ def profiles() -> dict:
             "description": profile["description"].strip(),
             "method": profile["method"],
             "leaves_machine": engine["leaves_machine"],
+            "line_items": engine["line_items"],
             "available": engine["available"],
             "unavailable_reason": engine["unavailable_reason"],
             "measured": engine["measured"],
