@@ -23,10 +23,13 @@ docker compose up --build -d      # UI on http://localhost:8501, API on :8000
    The button shows the estimated cost before anything is sent.
 3. Check the table. The *check* column flags fields that were not found, dates
    that are not dates and totals that are not amounts; edit any cell to correct it.
-4. Download the table, with your corrections, as Excel, CSV or JSON. Rows to
-   check are highlighted in the Excel file.
-5. Pick a document to see it next to its fields; with OCR engines, the lines each
-   field came from are outlined in the field's colour.
+4. In the private mode a second table lists every purchased item with its amount
+   (experimental, see [Line items](#line-items-cord)); a receipt whose items,
+   subtotal, tax and total do not add up says why in *check*.
+5. Download the tables, with your corrections, as Excel (line items on a second
+   sheet), CSV or JSON. Rows to check are highlighted in the Excel file.
+6. Pick a document to see it next to its fields and items; with OCR engines, the
+   lines each field came from are outlined in the field's colour.
 
 The modes are defined in [profiles.yaml](profiles.yaml); the numbers next to them
 are read from the evaluation reports. Under *Advanced* any engine (e1 ... e5) can be
@@ -107,8 +110,14 @@ GET  /methods                  every engine (e1 ... e5) with the same details
 POST /extract  file            image or PDF; optional profile=accurate|private
                [profile|method]  or method=e1...e5 (default: the default mode)
                -> fields, normalized fields, fields to check, OCR lines and boxes,
-                  the lines behind each field, seconds, tokens, USD, page count
+                  the lines behind each field, line items (e2; null otherwise),
+                  seconds, tokens, USD, page count
 ```
+
+`line_items` holds the items (name, quantity, unit price, amount), the subtotal,
+tax, service, discount and total, and `needs_review` with the reasons. Amounts are
+plain decimal strings ("43636", "9999.99"). `/methods` and `/profiles` say which
+engines and modes return line items.
 
 An engine that cannot run on the server (no OpenAI key, no Ollama) is answered
 with 503 and the reason.
@@ -124,9 +133,13 @@ rules and the field descriptions. The 400 are not the official SROIE test set.
 
 ### Line items (CORD)
 
-E2 also has rule-based line-item extraction ([extractor/fields/line_items.py](extractor/fields/line_items.py)):
+E2 also returns line items, read by rules ([extractor/fields/line_items.py](extractor/fields/line_items.py)):
 every purchased item with its amount, the subtotal, tax, service, discount and
-total, and a `needs_review` flag when the numbers do not add up. It is measured
+total, and a `needs_review` flag when the numbers do not add up. The receipt
+document type declares them (`line_items: true`) and an engine reads them when its
+YAML says how (`line_items: rules`, E2 only for now). OCR runs once: the rules get
+the boxes as detected, the field rules the same boxes joined into lines as before,
+so E2's field results do not change. It is measured
 on [CORD v2](https://huggingface.co/datasets/naver-clova-ix/cord-v2)
 (Park et al., *CORD: A Consolidated Receipt Dataset for Post-OCR Parsing*,
 Document Intelligence Workshop at NeurIPS 2019; CC-BY-4.0), 1,000 Indonesian
@@ -148,3 +161,8 @@ python -m evaluation.cord_eval --mode e2e --split validation    # RapidOCR on th
   well-formed but wrong value, such as a misread company name, is not flagged.
 - Only the first page of a PDF is read.
 - E4 and E5 are not measured yet.
+- Line items are measured on Indonesian receipts (CORD), not on the Malaysian
+  ones the fields are measured on (SROIE has no item labels). About half of the
+  CORD receipts read end to end are flagged for review. Only E2 returns them.
+- The field rules were written for Malaysian receipts; on other receipts the
+  fields' total and the line items' total can disagree. Each is reported as read.

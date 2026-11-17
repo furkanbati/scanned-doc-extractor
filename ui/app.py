@@ -13,7 +13,7 @@ import requests
 import streamlit as st
 from PIL import Image, ImageDraw
 
-from export import columns, result_rows, to_csv, to_json, to_xlsx
+from export import columns, line_item_rows, result_rows, to_csv, to_json, to_xlsx
 
 API_URL = os.getenv("API_URL", "http://localhost:8000")
 PDF_DPI = 200  # the API renders PDFs at the same scale, so boxes line up
@@ -215,6 +215,9 @@ st.subheader("Fields")
 st.caption("Edit any cell to correct it; downloads include your corrections. "
            "The check column lists what looks wrong; a misread name can still look right.")
 
+# A new set of documents starts fresh tables, so edits never land on the wrong row.
+editor_key = hashlib.sha1(repr([key for key in keys if key in results]).encode()).hexdigest()[:12]
+
 table = pandas.DataFrame(rows, columns=columns(rows))
 edited = st.data_editor(
     table,
@@ -225,16 +228,34 @@ edited = st.data_editor(
         "seconds": st.column_config.NumberColumn("seconds", format="%.1f"),
         "usd": st.column_config.NumberColumn("USD", format="$%.5f"),
     },
-    # A new set of documents starts a fresh table, so edits never land on the wrong row.
-    key="editor-" + hashlib.sha1(repr([key for key in keys if key in results]).encode()).hexdigest()[:12],
+    key="editor-" + editor_key,
 )
 final = edited.astype(object).where(edited.notna(), None).to_dict("records")
 
-downloads = st.columns(3)
-downloads[0].download_button("Download Excel", to_xlsx(final), "documents.xlsx",
+item_rows = line_item_rows(items)
+final_items = []
+if item_rows:
+    st.subheader("Line items (experimental)")
+    st.caption("Each purchased item with its amount, read by rules from the OCR boxes. "
+               "Where the items, subtotal, tax and total do not add up, check says why; "
+               "edit any cell to correct it.")
+    items_table = pandas.DataFrame(item_rows, columns=columns(item_rows))
+    edited_items = st.data_editor(
+        items_table,
+        disabled=["file", "item", "check"],
+        hide_index=True,
+        width="stretch",
+        key="items-" + editor_key,
+    )
+    final_items = edited_items.astype(object).where(edited_items.notna(), None).to_dict("records")
+
+downloads = st.columns(4 if final_items else 3)
+downloads[0].download_button("Download Excel", to_xlsx(final, final_items), "documents.xlsx",
                              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 downloads[1].download_button("Download CSV", to_csv(final), "documents.csv", "text/csv")
-downloads[2].download_button("Download JSON", to_json(final), "documents.json", "application/json")
+downloads[2].download_button("Download JSON", to_json(final, final_items), "documents.json", "application/json")
+if final_items:
+    downloads[3].download_button("Download line items CSV", to_csv(final_items), "line_items.csv", "text/csv")
 
 # ---------------------------------------------------------------- one document
 
@@ -257,6 +278,25 @@ with right:
         st.markdown(f"<span style='color:{colour};font-weight:600'>■ {field}</span>{flag}",
                     unsafe_allow_html=True)
         st.code(value if value else "(not found)", language=None)
+
+    line_items = result.get("line_items")
+    if line_items:
+        st.markdown("**Line items** (experimental)")
+        if line_items["items"]:
+            st.dataframe(
+                pandas.DataFrame(line_items["items"], columns=["name", "quantity", "unit_price", "amount"]),
+                hide_index=True,
+                width="stretch",
+            )
+        else:
+            st.caption("No items found.")
+        sums = [f"{label} {line_items[key]}" for key, label in
+                (("subtotal", "subtotal"), ("tax", "tax"), ("service", "service"), ("discount", "discount"), ("total", "total"))
+                if line_items[key] is not None]
+        if sums:
+            st.caption(" · ".join(sums))
+        if line_items["needs_review"]:
+            st.warning("Check the items: " + "; ".join(line_items["reasons"]))
 
     facts = [f"{result['seconds']:.1f} s", f"engine {result['method']}"]
     if result["usd"] is not None:
