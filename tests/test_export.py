@@ -6,7 +6,7 @@ from openpyxl import load_workbook
 
 from extractor.review import review_notes
 from extractor.schema import load_doctype
-from ui.export import columns, result_rows, to_csv, to_json, to_xlsx
+from ui.export import columns, line_item_rows, result_rows, to_csv, to_json, to_xlsx
 
 RECEIPT = load_doctype("receipt")
 
@@ -93,3 +93,82 @@ def test_review_notes_accept_good_values():
     )
 
     assert notes == {}
+
+
+LINE_ITEMS = {
+    "items": [
+        {"name": "ISI CAMPUR", "amount": "43636", "quantity": "1", "unit_price": "43636"},
+        {"name": "AQUA BOTOL", "amount": "9000", "quantity": None, "unit_price": None},
+    ],
+    "subtotal": "52636",
+    "tax": "5264",
+    "discount": None,
+    "service": None,
+    "total": "57900",
+    "needs_review": True,
+    "reasons": ["total found by arithmetic, not by a TOTAL line"],
+}
+WITH_ITEMS = [
+    {"file": "d.jpg", "result": {**response({"total": "57.900"}), "line_items": LINE_ITEMS}, "error": None},
+    {
+        "file": "e.jpg",
+        "result": {
+            **response({"total": "9.999,99"}),
+            "line_items": {**LINE_ITEMS, "items": [{"name": "CAKE", "amount": "9999.99", "quantity": None, "unit_price": None}],
+                           "needs_review": False, "reasons": []},
+        },
+        "error": None,
+    },
+    *RESULTS,
+]
+
+
+def test_line_item_rows_one_per_item_with_numbers():
+    rows = line_item_rows(WITH_ITEMS)
+
+    assert [(row["file"], row["item"], row["name"]) for row in rows] == [
+        ("d.jpg", 1, "ISI CAMPUR"),
+        ("d.jpg", 2, "AQUA BOTOL"),
+        ("e.jpg", 1, "CAKE"),
+    ]
+    assert rows[0]["amount"] == 43636 and rows[0]["quantity"] == 1
+    assert rows[1]["quantity"] is None
+    assert rows[2]["amount"] == 9999.99
+    assert rows[0]["check"] == "line items: total found by arithmetic, not by a TOTAL line"
+    assert rows[2]["check"] == ""
+
+
+def test_documents_without_line_items_give_no_item_rows():
+    assert line_item_rows(RESULTS) == []
+
+
+def test_a_receipt_whose_items_do_not_add_up_is_checked():
+    rows = result_rows(WITH_ITEMS)
+
+    assert rows[0]["check"] == "line items: total found by arithmetic, not by a TOTAL line"
+    assert rows[1]["check"] == ""
+
+
+def test_xlsx_has_a_line_items_sheet():
+    workbook = load_workbook(io.BytesIO(to_xlsx(result_rows(WITH_ITEMS), line_item_rows(WITH_ITEMS))))
+
+    assert workbook.sheetnames == ["Documents", "Line items"]
+    items = workbook["Line items"]
+    assert [cell.value for cell in items[1]] == ["file", "item", "name", "quantity", "unit_price", "amount", "check"]
+    assert items["F2"].value == 43636
+    assert items["A2"].fill.fgColor.rgb == "00FFF4CC"
+    assert items["A4"].fill.fgColor.rgb != "00FFF4CC"
+
+
+def test_xlsx_without_items_keeps_one_sheet():
+    workbook = load_workbook(io.BytesIO(to_xlsx(result_rows(RESULTS), [])))
+
+    assert workbook.sheetnames == ["Documents"]
+
+
+def test_json_nests_items_under_their_document():
+    rows = json.loads(to_json(result_rows(WITH_ITEMS), line_item_rows(WITH_ITEMS)))
+
+    assert [entry["name"] for entry in rows[0]["line_items"]] == ["ISI CAMPUR", "AQUA BOTOL"]
+    assert rows[0]["line_items"][0] == {"item": 1, "name": "ISI CAMPUR", "quantity": 1, "unit_price": 43636, "amount": 43636}
+    assert rows[2]["line_items"] == []
