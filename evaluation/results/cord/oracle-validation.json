@@ -1,0 +1,21 @@
+{
+  "mode": "oracle",
+  "split": "validation",
+  "receipts": 100,
+  "item_count_accuracy": 0.89,
+  "item_amount_accuracy": 0.9592760180995475,
+  "total_accuracy": 1.0,
+  "required_value_accuracy": 0.9522673031026253,
+  "receipts_fully_correct": 0.87,
+  "needs_review_rate": 0.23,
+  "silent_error_rate": 0.04,
+  "amount_precision": 0.9466666666666667,
+  "amount_recall": 0.9681818181818181,
+  "amount_f1": 0.9573033707865168,
+  "seconds_per_receipt": 0.00036480699985986576,
+  "errors": {
+    "subtotal_as_item": 2,
+    "missed_row": 4,
+    "extra_row": 5
+  }
+}
