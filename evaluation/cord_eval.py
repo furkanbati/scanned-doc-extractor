@@ -24,7 +24,7 @@ from pathlib import Path
 from evaluation.cord import DEFAULT_ROOT, SPLITS, CordSample, load_cord
 from evaluation.cord_metrics import ERROR_KINDS, score_receipt, summarize
 from extractor.amounts import parse_amount
-from extractor.line_items import extract_line_items
+from extractor.fields.line_items import extract_line_items
 from extractor.ocr.base import OcrLine
 
 DEFAULT_OUTPUT = Path(__file__).parent / "results" / "cord"

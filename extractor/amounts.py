@@ -17,7 +17,7 @@ SEPARATORS = ".,"
 
 # A token that is clearly money: thousands groups or a decimal part.
 # Plain integers ("15000", "9") are numbers too, but only count as money when
-# they line up with other amounts (see extractor/line_items.py).
+# they line up with other amounts (see extractor/fields/line_items.py).
 # Up to two stray marks around a number are allowed: a sign, a bracket, or
 # OCR noise such as ".20,000" or "£12,273".
 EDGE = r"[^0-9A-Za-z]{0,2}"

@@ -124,7 +124,7 @@ rules and the field descriptions. The 400 are not the official SROIE test set.
 
 ### Line items (CORD)
 
-E2 also has rule-based line-item extraction ([extractor/line_items.py](extractor/line_items.py)):
+E2 also has rule-based line-item extraction ([extractor/fields/line_items.py](extractor/fields/line_items.py)):
 every purchased item with its amount, the subtotal, tax, service, discount and
 total, and a `needs_review` flag when the numbers do not add up. It is measured
 on [CORD v2](https://huggingface.co/datasets/naver-clova-ix/cord-v2)

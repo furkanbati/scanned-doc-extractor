@@ -6,6 +6,8 @@ ocr: rapidocr
 ocr_options:
   group_lines: true
 fields: rules
+# Line items from the OCR boxes, before they are joined into lines.
+line_items: rules
 
 # Results on the 400 test receipts (evaluation/results/e2/report.json).
 # Rerun the evaluation and update these when the engine changes.

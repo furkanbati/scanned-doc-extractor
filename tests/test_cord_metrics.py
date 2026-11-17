@@ -4,7 +4,7 @@ import pytest
 
 from evaluation.cord import CordTruth, TruthItem
 from evaluation.cord_metrics import error_kinds, is_number_error, score_receipt, summarize
-from extractor.line_items import LineItem, LineItemResult
+from extractor.fields.line_items import LineItem, LineItemResult
 
 
 def truth(amounts, total=None, subtotal=None) -> CordTruth:
