@@ -38,11 +38,17 @@ class FieldSpec(BaseModel):
 
 
 class DocumentType(BaseModel):
-    """The fields to extract from one kind of document."""
+    """The fields to extract from one kind of document.
+
+    `line_items`: the document also lists purchased items, one per line, with
+    their amounts and the totals they add up to. Engines that can read them
+    (extractor/engines: `line_items:`) return them next to the fields.
+    """
 
     name: str
     description: str = ""
     fields: list[FieldSpec]
+    line_items: bool = False
 
     @property
     def field_names(self) -> list[str]:

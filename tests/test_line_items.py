@@ -10,7 +10,7 @@ from decimal import Decimal
 
 import pytest
 
-from extractor.line_items import (
+from extractor.fields.line_items import (
     Row,
     Token,
     classify_row,
@@ -372,7 +372,7 @@ def test_name_without_amount_below_the_last_item_flags_review():
     [("0 x1", (1, 0)), ("15.000 x2", (2, 15000)), ("2 x 15.000", (2, 15000)), ("2 @ Rp 15.000", (2, 15000)), ("TEA 2", None)],
 )
 def test_quantity_times_unit(text, expected):
-    from extractor.line_items import quantity_times_unit
+    from extractor.fields.line_items import quantity_times_unit
 
     found = quantity_times_unit(text)
     assert found == (None if expected is None else (D(expected[0]), D(expected[1])))
@@ -453,7 +453,7 @@ def test_rounded_total_still_adds_up():
     [(55800, 55834, True), (32000, 31999, True), (121768, 121798, False), (55834, 55834, True), (50000, 55834, False)],
 )
 def test_adds_up_accepts_rounding_not_misreads(found, expected, result):
-    from extractor.line_items import adds_up
+    from extractor.fields.line_items import adds_up
 
     assert adds_up(D(found), D(expected)) is result
 

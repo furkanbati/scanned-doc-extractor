@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 
 from evaluation.cord import CordTruth
-from extractor.line_items import LineItemResult
+from extractor.fields.line_items import LineItemResult
 
 ERROR_KINDS = (
     "ocr",

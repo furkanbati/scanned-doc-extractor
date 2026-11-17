@@ -135,9 +135,16 @@ async def extract(
         "doctype": doctype.name,
         "fields": fields,
         "normalized": doctype.normalize(result.fields),
-        "review": review_notes(doctype, result.fields),
+        "review": review_notes(
+            doctype,
+            result.fields,
+            result.line_items.total if result.line_items is not None else None,
+        ),
         "lines": [{"text": line.text, "box": list(line.box)} for line in result.lines],
         "field_lines": locate_fields(fields, result.lines),
+        # Items, subtotal, tax, total and needs_review; None when the engine
+        # does not read line items.
+        "line_items": result.line_items.to_json() if result.line_items is not None else None,
         "seconds": round(seconds, 3),
         "usage": vars(result.usage) if result.usage else None,
         "usd": usd,

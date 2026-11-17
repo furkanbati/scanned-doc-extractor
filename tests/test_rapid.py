@@ -42,6 +42,9 @@ def test_rapidocr_reads_rendered_text():
     draw = ImageDraw.Draw(image)
     draw.text((30, 60), "TOTAL 9.00", fill="black", font=ImageFont.load_default(size=64))
 
-    lines = RapidOcr(group_lines=True).read(image)
+    ocr = RapidOcr(group_lines=True)
+    lines = ocr.read(image)
 
     assert lines_to_text(lines).replace(" ", "") == "TOTAL9.00"
+    # read() is the segments joined into lines: what the fields get either way.
+    assert ocr.lines(ocr.read_segments(image)) == lines
