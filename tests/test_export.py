@@ -172,3 +172,29 @@ def test_json_nests_items_under_their_document():
     assert [entry["name"] for entry in rows[0]["line_items"]] == ["ISI CAMPUR", "AQUA BOTOL"]
     assert rows[0]["line_items"][0] == {"item": 1, "name": "ISI CAMPUR", "quantity": 1, "unit_price": 43636, "amount": 43636}
     assert rows[2]["line_items"] == []
+
+
+GOOD = {"company": "ABC SDN BHD", "date": "25/12/2018", "address": "NO 1, JALAN SAGU", "total": "RM 33.90"}
+
+
+def test_total_differing_from_the_line_items_is_checked():
+    from decimal import Decimal
+
+    notes = review_notes(RECEIPT, {**GOOD, "total": "10.00"}, line_items_total=Decimal(57900))
+
+    assert notes == {"total": "differs from the line items' total 57900"}
+
+
+def test_total_equal_to_the_line_items_passes():
+    from decimal import Decimal
+
+    assert review_notes(RECEIPT, GOOD, line_items_total=Decimal("33.90")) == {}
+    # "57.900" is fifty-seven thousand nine hundred, as the line items read it.
+    assert review_notes(RECEIPT, {**GOOD, "total": "57.900"}, line_items_total=Decimal(57900)) == {}
+
+
+def test_no_comparison_without_line_items_or_without_a_total():
+    from decimal import Decimal
+
+    assert review_notes(RECEIPT, {**GOOD, "total": "10.00"}) == {}
+    assert review_notes(RECEIPT, {**GOOD, "total": None}, line_items_total=Decimal(57900)) == {"total": "not found"}

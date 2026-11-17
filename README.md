@@ -165,4 +165,5 @@ python -m evaluation.cord_eval --mode e2e --split validation    # RapidOCR on th
   ones the fields are measured on (SROIE has no item labels). About half of the
   CORD receipts read end to end are flagged for review. Only E2 returns them.
 - The field rules were written for Malaysian receipts; on other receipts the
-  fields' total and the line items' total can disagree. Each is reported as read.
+  fields' total and the line items' total can disagree. Both are reported as
+  read, and *check* says the total differs from the line items' total.
