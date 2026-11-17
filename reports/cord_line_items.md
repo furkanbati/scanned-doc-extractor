@@ -162,7 +162,7 @@ Read by mode:
 
 ## How the rules work
 
-`extractor/line_items.py`; one test per rule in `tests/test_line_items.py`,
+`extractor/fields/line_items.py`; one test per rule in `tests/test_line_items.py`,
 all on made-up receipts.
 
 - **Rows**: the page skew is the median slope of wide boxes; boxes are rotated

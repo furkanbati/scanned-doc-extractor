@@ -19,15 +19,27 @@ class RapidOcr:
         self.engine = RapidOCR(params={"Global.log_level": log_level})
 
     def read(self, image: Image.Image) -> list[OcrLine]:
+        return self.lines(self.read_segments(image))
+
+    def read_segments(self, image: Image.Image) -> list[OcrLine]:
+        """The text boxes as detected, before they are joined into lines.
+
+        Line items need them: joining "NASI GORENG" and "25,000" into one line
+        loses where the amount column is.
+        """
+
         output = self.engine(np.asarray(image.convert("RGB"))[:, :, ::-1])
         if output.boxes is None:
             return []
 
-        segments = [
+        return [
             OcrLine(text=text, box=tuple(int(round(v)) for point in box for v in point))
             for box, text in zip(output.boxes, output.txts)
             if text.strip()
         ]
+
+    def lines(self, segments: list[OcrLine]) -> list[OcrLine]:
+        """What read() returns for these segments: joined into lines if configured."""
 
         return group_into_lines(segments) if self.group_lines else segments
 

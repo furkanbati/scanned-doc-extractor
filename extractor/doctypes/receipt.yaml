@@ -21,3 +21,6 @@ fields:
   - name: total
     type: amount
     description: Final amount paid, after tax and rounding.
+# Every purchased item with its amount, and the subtotal, tax, service and
+# total they add up to (extractor/fields/line_items.py).
+line_items: true
