@@ -6,6 +6,7 @@ from PIL import Image
 
 from extractor.ocr.base import OcrLine
 from extractor.fields.base import FieldExtractor, Usage
+from extractor.fields.line_items import LineItemResult, extract_line_items
 from extractor.ocr.base import OcrEngine
 from extractor.schema import DocumentType, Fields
 
@@ -33,27 +34,43 @@ class PipelineResult:
     fields: Fields
     lines: list[OcrLine]
     usage: Usage | None = None
+    # None when the engine does not read line items.
+    line_items: LineItemResult | None = None
 
 
 class Pipeline:
-    """image -> (OCR lines) -> fields.
+    """image -> (OCR lines) -> fields, and line items when asked for.
 
     OCR runs only when the field extractor needs it; a vision model reads the
-    image itself.
+    image itself. With line items, OCR still runs once: the line-item rules
+    get its boxes as detected, the field extractor the same boxes joined into
+    lines, exactly what it would get without line items.
     """
 
-    def __init__(self, ocr: OcrEngine | None, extractor: FieldExtractor):
+    def __init__(self, ocr: OcrEngine | None, extractor: FieldExtractor, line_items: bool = False):
         if extractor.needs_ocr and ocr is None:
             raise ValueError(f"{extractor.name} needs an OCR engine")
+        if line_items and ocr is None:
+            raise ValueError("line items need an OCR engine")
 
         self.ocr = ocr
         self.extractor = extractor
+        self.line_items = line_items
 
     def run(self, image: Image.Image) -> PipelineResult:
-        lines = self.ocr.read(image) if self.ocr is not None else []
-        extraction = self.extractor.extract(image, lines)
+        segments = None
+        if self.ocr is None:
+            lines = []
+        elif self.line_items and hasattr(self.ocr, "read_segments"):
+            segments = self.ocr.read_segments(image)
+            lines = self.ocr.lines(segments)
+        else:
+            lines = self.ocr.read(image)
 
-        return PipelineResult(fields=extraction.fields, lines=lines, usage=extraction.usage)
+        extraction = self.extractor.extract(image, lines)
+        items = extract_line_items(segments if segments is not None else lines) if self.line_items else None
+
+        return PipelineResult(fields=extraction.fields, lines=lines, usage=extraction.usage, line_items=items)
 
 
 def build_ocr(name: str, options: dict | None = None) -> OcrEngine | None:
@@ -106,7 +123,17 @@ def build_pipeline(config: dict, doctype: DocumentType) -> Pipeline:
     if preprocess != "none":
         raise ValueError(f"Unknown preprocessing {preprocess!r}")
 
+    line_items = config.get("line_items", "none")
+    if line_items not in ("none", "rules"):
+        raise ValueError(f"Unknown line-item extractor {line_items!r}")
+
     return Pipeline(
         ocr=build_ocr(config["ocr"], config.get("ocr_options")),
         extractor=build_extractor(config["fields"], doctype, config.get("fields_options")),
+        # Read only when the document type has them and the engine can read them.
+        line_items=doctype.line_items and line_items == "rules",
     )
+
+
+def reads_line_items(config: dict, doctype: DocumentType) -> bool:
+    return doctype.line_items and config.get("line_items", "none") != "none"
