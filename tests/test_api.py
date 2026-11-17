@@ -254,3 +254,32 @@ def test_methods_and_modes_say_which_read_line_items(client):
     assert engines["e3"]["line_items"] is False
     assert profiles["private"]["line_items"] is True
     assert profiles["accurate"]["line_items"] is False
+
+
+def test_extract_checks_a_total_that_differs_from_the_line_items(client, monkeypatch):
+    from decimal import Decimal
+
+    from extractor.fields.line_items import LineItem, LineItemResult
+
+    def pipeline_with(total):
+        class Pipeline:
+            def run(self, image):
+                return PipelineResult(
+                    fields={"company": "ABC SDN BHD", "address": "NO 1", "date": "25/12/2018", "total": total},
+                    lines=[line("TOTAL")],
+                    line_items=LineItemResult(
+                        items=[LineItem(name="TEA", amount=Decimal(57900))],
+                        total=Decimal(57900),
+                        needs_review=False,
+                    ),
+                )
+
+        return Pipeline()
+
+    monkeypatch.setattr(api, "get_pipeline", lambda method: pipeline_with("10.00"))
+    body = client.post("/extract", files={"file": ("r.png", png_bytes())}, data={"method": "e2"}).json()
+    assert body["review"] == {"total": "differs from the line items' total 57900"}
+
+    monkeypatch.setattr(api, "get_pipeline", lambda method: pipeline_with("57.900"))
+    body = client.post("/extract", files={"file": ("r.png", png_bytes())}, data={"method": "e2"}).json()
+    assert body["review"] == {}
