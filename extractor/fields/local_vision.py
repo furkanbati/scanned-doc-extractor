@@ -35,7 +35,7 @@ class LocalVisionExtractor:
     def __init__(
         self,
         doctype: DocumentType,
-        model: str = "qwen3-vl:2b",
+        model: str = "qwen3-vl:2b-instruct",
         think: bool = False,
         max_tokens: int = 512,
         max_side: int | None = 1600,

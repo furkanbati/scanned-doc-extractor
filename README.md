@@ -43,7 +43,7 @@ chosen directly, and the providers not built yet are listed as planned.
 | E2 RapidOCR (PP-OCRv6) + rules | 0.631 | 0.686 | 0.364 | 3.57 | 0 | no |
 | E3 OpenAI gpt-6-luna, image to JSON | **0.797** | **0.858** | - | 7.16 | 0.31 | yes |
 | E4 RapidOCR + local LLM (qwen3.5:4b) | not measured yet | | | | 0 | no |
-| E5 local vision model (qwen3-vl:2b) | not measured yet | | | | 0 | no |
+| E5 local vision model (qwen3-vl:2b-instruct) | not measured yet | | | | 0 | no |
 
 Field accuracy is the share of fields (company, address, date, total) that match
 the label exactly after normalization (case, spaces, date format, amount format).
@@ -110,7 +110,7 @@ GET  /methods                  every engine (e1 ... e5) with the same details
 POST /extract  file            image or PDF; optional profile=accurate|private
                [profile|method]  or method=e1...e5 (default: the default mode)
                -> fields, normalized fields, fields to check, OCR lines and boxes,
-                  the lines behind each field, line items (e2; null otherwise),
+                  the lines behind each field, line items (e2, e5; null otherwise),
                   seconds, tokens, USD, page count
 ```
 
@@ -144,7 +144,9 @@ E2 also returns line items, read by rules ([extractor/fields/line_items.py](extr
 every purchased item with its amount, the subtotal, tax, service, discount and
 total, and a `needs_review` flag when the numbers do not add up. The receipt
 document type declares them (`line_items: true`) and an engine reads them when its
-YAML says how (`line_items: rules`, E2 only for now). OCR runs once: the rules get
+YAML says how: `line_items: rules` (E2, from the OCR boxes) or `line_items: model`
+(E5: the vision model is asked for the items in the same call as the fields;
+its answer is parsed and reconciled like the rules'). For E2, OCR runs once: the rules get
 the boxes as detected, the field rules the same boxes joined into lines as before,
 so E2's field results do not change. It is measured
 on [CORD v2](https://huggingface.co/datasets/naver-clova-ix/cord-v2)
@@ -157,6 +159,8 @@ bash scripts/download_cord.sh                                   # 2.3 GB, into d
 python -m evaluation.cord_eval --mode oracle --split validation # dataset words as OCR
 python -m evaluation.cord_eval --mode e2e --split validation    # RapidOCR on the image
 python -m evaluation.cord_gate --mode e2e --split validation    # the review gate on those results
+OLLAMA_HOST=http://localhost:11434 python -m evaluation.cord_eval --mode e5 --split validation --threads 8
+python -m evaluation.cord_gate --hybrid --split validation       # E2, then E5 for what E2's gate rejects
 ```
 
 ## Limitations
@@ -168,10 +172,11 @@ python -m evaluation.cord_gate --mode e2e --split validation    # the review gat
 - The *check* column only catches values that are missing or malformed. A
   well-formed but wrong value, such as a misread company name, is not flagged.
 - Only the first page of a PDF is read.
-- E4 and E5 are not measured yet.
+- E4 and E5 are not measured on SROIE fields yet. E5's line items are measured
+  on CORD: [reports/cord_e5_line_items.md](reports/cord_e5_line_items.md).
 - Line items are measured on Indonesian receipts (CORD), not on the Malaysian
   ones the fields are measured on (SROIE has no item labels). About half of the
-  CORD receipts read end to end are flagged for review. Only E2 returns them.
+  CORD receipts read end to end are flagged for review. E2 and E5 return them.
 - The field rules were written for Malaysian receipts; on other receipts the
   fields' total and the line items' total can disagree. Both are reported as
   read, and *check* says the total differs from the line items' total.
