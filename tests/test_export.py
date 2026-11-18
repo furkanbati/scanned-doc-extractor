@@ -198,3 +198,38 @@ def test_no_comparison_without_line_items_or_without_a_total():
 
     assert review_notes(RECEIPT, {**GOOD, "total": "10.00"}) == {}
     assert review_notes(RECEIPT, {**GOOD, "total": None}, line_items_total=Decimal(57900)) == {"total": "not found"}
+
+
+GATED = [
+    {
+        "file": "f.jpg",
+        "result": {
+            **response({"total": "30.000"}),
+            "line_items": {**LINE_ITEMS, "items": [{"name": "TEA", "amount": "25000", "quantity": None, "unit_price": None},
+                                                  {"name": "Extra Pearl", "amount": "5000", "quantity": None, "unit_price": None}],
+                           "needs_review": False, "reasons": []},
+            "gate": {"accepted": False, "reasons": ["date not found", "line items: 'Extra Pearl' may be an add-on to the item above"]},
+        },
+        "error": None,
+    },
+    {
+        "file": "g.jpg",
+        "result": {**response({"total": "9.000"}), "line_items": {**LINE_ITEMS, "needs_review": False, "reasons": []},
+                   "gate": {"accepted": True, "reasons": []}},
+        "error": None,
+    },
+]
+
+
+def test_with_a_gate_the_check_column_lists_its_reasons():
+    rows = result_rows(GATED)
+
+    assert rows[0]["check"] == "date not found; line items: 'Extra Pearl' may be an add-on to the item above"
+    assert rows[1]["check"] == ""
+
+
+def test_with_a_gate_item_rows_carry_only_the_line_item_reasons():
+    rows = line_item_rows(GATED)
+
+    assert rows[0]["check"] == "line items: 'Extra Pearl' may be an add-on to the item above"
+    assert rows[-1]["check"] == ""
