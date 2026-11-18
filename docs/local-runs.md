@@ -12,7 +12,7 @@ With 7.5 GB the model runner was killed for lack of memory.
 ```bash
 docker compose up -d ollama
 docker compose exec -d ollama ollama pull qwen3.5:4b
-docker compose exec -d ollama ollama pull qwen3-vl:2b
+docker compose exec -d ollama ollama pull qwen3-vl:2b-instruct
 docker compose exec ollama ollama list
 ```
 
@@ -38,3 +38,12 @@ are not run again. The checkpoint is removed once the reports are written.
 | E4, qwen3.5:4b, dev | first 20 | 0.713 | 36 (4096-token context) |
 | E4, test | 101 of 400, stopped | - | 20 (3072-token context) |
 | E5 | not run | - | - |
+
+## Two things that made E5 fail or crawl
+
+- `qwen3-vl:2b` is a thinking model: with `think: false` it still spent the whole
+  token budget thinking and returned an empty answer. E5 uses
+  `qwen3-vl:2b-instruct`, which answers directly.
+- Ollama's default of one thread per core gave 2.8 tokens/s in Docker on a
+  14-core laptop; 8 threads gave 43. Set `threads` in the engine's
+  `fields_options` (or `--threads` for the CORD evaluation) on such machines.

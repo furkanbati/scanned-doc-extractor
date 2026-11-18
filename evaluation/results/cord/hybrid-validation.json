@@ -1,0 +1,35 @@
+{
+  "split": "validation",
+  "standard": {
+    "receipts": 100,
+    "accepted_by_e2": 61,
+    "wrong_by_e2": 3,
+    "sent_to_e5": 39,
+    "accepted_by_e5": 8,
+    "wrong_by_e5": 1,
+    "to_person": 31,
+    "accepted_rate": 0.69,
+    "accepted_error_rate": 0.057971014492753624,
+    "accepted_error_rate_95": [
+      0.022772020303367495,
+      0.13979442524423166
+    ],
+    "seconds_per_receipt": 12.11928162339151
+  },
+  "strict": {
+    "receipts": 100,
+    "accepted_by_e2": 56,
+    "wrong_by_e2": 2,
+    "sent_to_e5": 44,
+    "accepted_by_e5": 6,
+    "wrong_by_e5": 0,
+    "to_person": 38,
+    "accepted_rate": 0.62,
+    "accepted_error_rate": 0.03225806451612903,
+    "accepted_error_rate_95": [
+      0.008891184997076397,
+      0.11020677131018222
+    ],
+    "seconds_per_receipt": 13.470114873441624
+  }
+}
