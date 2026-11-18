@@ -9,6 +9,9 @@
 - e2e: image -> RapidOCR -> rules, as the product would run. RapidOCR output
   is cached per split in data/cord/ocr/<split>.jsonl, so changing a rule does
   not rerun OCR; the cached OCR time still counts in seconds per receipt.
+- e5: image -> local vision model (E5, Ollama) asked for the items, as
+  extractor/engines/e5.yaml runs it. Answers are cached per split in
+  data/cord/e5/<split>.jsonl; set OLLAMA_HOST to reach the server.
 
 The summary goes to evaluation/results/cord/<mode>-<split>.json, the
 per-receipt results (labels included) next to it as .receipts.jsonl, which is
@@ -25,10 +28,11 @@ from evaluation.cord import DEFAULT_ROOT, SPLITS, CordSample, load_cord
 from evaluation.cord_metrics import ERROR_KINDS, score_receipt, summarize
 from extractor.amounts import parse_amount
 from extractor.fields.line_items import extract_line_items
+from extractor.fields.model_items import parse_line_items
 from extractor.ocr.base import OcrLine
 
 DEFAULT_OUTPUT = Path(__file__).parent / "results" / "cord"
-MODES = ("oracle", "e2e")
+MODES = ("oracle", "e2e", "e5")
 
 
 def load_ocr_cache(path: Path) -> dict[str, dict]:
@@ -62,6 +66,38 @@ def ocr_lines(sample: CordSample, cache: dict[str, dict], cache_path: Path, engi
     return [OcrLine(text=text, box=tuple(box)) for text, box in entry["segments"]], entry["seconds"]
 
 
+def e5_answer(sample: CordSample, cache: dict[str, dict], cache_path: Path, extractor) -> tuple[str, float]:
+    """E5's raw JSON answer for the receipt and the seconds it took."""
+
+    if sample.id not in cache:
+        image = sample.image()
+        start = time.perf_counter()
+        response = extractor.answer(image)
+        seconds = time.perf_counter() - start
+
+        cache[sample.id] = {"id": sample.id, "seconds": seconds, "content": response}
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        with cache_path.open("a", encoding="utf-8") as file:
+            file.write(json.dumps(cache[sample.id], ensure_ascii=False) + "\n")
+
+    entry = cache[sample.id]
+
+    return entry["content"], entry["seconds"]
+
+
+def e5_extractor(threads: int | None = None):
+    from extractor.fields.local_vision import LocalVisionExtractor
+    from extractor.pipeline import load_engine
+    from extractor.schema import load_doctype
+
+    config = load_engine("e5")
+    options = {**config["fields_options"], "line_items": True}
+    if threads:
+        options["threads"] = threads
+
+    return LocalVisionExtractor(load_doctype(config["doctype"]), **options)
+
+
 def text_amounts(lines: list[OcrLine]) -> set[Decimal]:
     """Every amount the OCR read, for telling OCR errors from rule errors."""
 
@@ -75,15 +111,28 @@ def text_amounts(lines: list[OcrLine]) -> set[Decimal]:
     return amounts
 
 
-def run(mode: str, split: str, root: Path, limit: int | None, output: Path) -> dict:
-    cache_path = Path(root) / "ocr" / f"{split}.jsonl"
-    cache = load_ocr_cache(cache_path) if mode == "e2e" else {}
+def run(mode: str, split: str, root: Path, limit: int | None, output: Path, threads: int | None = None) -> dict:
+    cache_path = Path(root) / ("e5" if mode == "e5" else "ocr") / f"{split}.jsonl"
+    cache = load_ocr_cache(cache_path) if mode != "oracle" else {}
     engine = None
 
     scores, seconds, records = [], [], []
-    samples = load_cord(root, split, limit, images=mode == "e2e")
+    samples = load_cord(root, split, limit, images=mode != "oracle")
 
     for number, sample in enumerate(samples, start=1):
+        if mode == "e5":
+            if engine is None and sample.id not in cache:
+                engine = e5_extractor(threads)
+            content, model_seconds = e5_answer(sample, cache, cache_path, engine)
+            prediction = parse_line_items(content)
+            seconds.append(model_seconds)
+            score = score_receipt(prediction, sample.truth, None)
+            scores.append(score)
+            records.append(_record(sample, prediction, score))
+            if number % 10 == 0:
+                print(f"{number} receipts", flush=True)
+            continue
+
         if mode == "oracle":
             lines, ocr_seconds, ocr_amounts = sample.words, 0.0, None
         else:
@@ -101,22 +150,7 @@ def run(mode: str, split: str, root: Path, limit: int | None, output: Path) -> d
         score = score_receipt(prediction, sample.truth, ocr_amounts)
         scores.append(score)
         seconds.append(ocr_seconds + rule_seconds)
-        records.append(
-            {
-                "id": sample.id,
-                "prediction": prediction.to_json(),
-                "truth": {
-                    "amounts": [None if a is None else str(a) for a in sample.truth.amounts],
-                    "names": [item.name for item in sample.truth.items],
-                    "subtotal": None if sample.truth.subtotal is None else str(sample.truth.subtotal),
-                    "total": None if sample.truth.total is None else str(sample.truth.total),
-                },
-                "correct": score.correct,
-                "required": score.required,
-                "errors": score.errors,
-                "silent_error": score.silent_error,
-            }
-        )
+        records.append(_record(sample, prediction, score))
 
         if number % 100 == 0:
             print(f"{number} receipts", flush=True)
@@ -131,6 +165,23 @@ def run(mode: str, split: str, root: Path, limit: int | None, output: Path) -> d
             file.write(json.dumps(record, ensure_ascii=False) + "\n")
 
     return summary
+
+
+def _record(sample: CordSample, prediction, score) -> dict:
+    return {
+        "id": sample.id,
+        "prediction": prediction.to_json(),
+        "truth": {
+            "amounts": [None if a is None else str(a) for a in sample.truth.amounts],
+            "names": [item.name for item in sample.truth.items],
+            "subtotal": None if sample.truth.subtotal is None else str(sample.truth.subtotal),
+            "total": None if sample.truth.total is None else str(sample.truth.total),
+        },
+        "correct": score.correct,
+        "required": score.required,
+        "errors": score.errors,
+        "silent_error": score.silent_error,
+    }
 
 
 def format_summary(summary: dict) -> str:
@@ -192,6 +243,7 @@ def main() -> None:
     parser.add_argument("--root", type=Path, default=DEFAULT_ROOT)
     parser.add_argument("--limit", type=int)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument("--threads", type=int, help="e5: CPU threads for Ollama (its default can be slow in Docker)")
     parser.add_argument("--table", action="store_true", help="print the saved results as a markdown table")
     args = parser.parse_args()
 
@@ -202,7 +254,7 @@ def main() -> None:
     if not (args.mode and args.split):
         parser.error("--mode and --split are required (or --table)")
 
-    summary = run(args.mode, args.split, args.root, args.limit, args.output)
+    summary = run(args.mode, args.split, args.root, args.limit, args.output, args.threads)
     print(f"{args.mode} / {args.split}")
     print(format_summary(summary))
 
