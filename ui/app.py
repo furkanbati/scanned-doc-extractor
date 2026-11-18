@@ -205,11 +205,16 @@ items = [item for _, item in done]
 rows = result_rows(items)
 ok = [item for item in items if item["result"]]
 
-summary = st.columns(4)
+gated = [item["result"]["gate"] for item in ok if item["result"].get("gate") is not None]
+summary = st.columns(5 if gated else 4)
 summary[0].metric("Documents", len(items))
 summary[1].metric("To check", sum(1 for row in rows if row["check"]))
 summary[2].metric("Time", f"{sum(item['result']['seconds'] for item in ok):.1f} s")
 summary[3].metric("Cost", f"${sum(item['result']['usd'] or 0 for item in ok):.4f}")
+if gated:
+    # Passed every check: fields, sums, no add-on lines (extractor/gate.py).
+    summary[4].metric("Accepted without a look", sum(1 for gate in gated if gate["accepted"]),
+                      help="Every check passed. On CORD about 1 in 40 of these was still wrong.")
 
 st.subheader("Fields")
 st.caption("Edit any cell to correct it; downloads include your corrections. "
@@ -295,8 +300,13 @@ with right:
                 if line_items[key] is not None]
         if sums:
             st.caption(" · ".join(sums))
-        if line_items["needs_review"]:
-            st.warning("Check the items: " + "; ".join(line_items["reasons"]))
+        gate = result.get("gate")
+        item_reasons = ([reason.removeprefix("line items: ") for reason in gate["reasons"] if reason.startswith("line items: ")]
+                        if gate is not None else line_items["reasons"] if line_items["needs_review"] else [])
+        if item_reasons:
+            st.warning("Check the items: " + "; ".join(item_reasons))
+        if gate is not None and gate["accepted"]:
+            st.success("Every check passed: accepted without a look.")
 
     facts = [f"{result['seconds']:.1f} s", f"engine {result['method']}"]
     if result["usd"] is not None:

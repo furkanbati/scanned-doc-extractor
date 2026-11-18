@@ -1,0 +1,59 @@
+{
+  "mode": "oracle",
+  "split": "test",
+  "standard": {
+    "receipts": 100,
+    "accepted": 61,
+    "accepted_rate": 0.61,
+    "accepted_wrong": 1,
+    "accepted_error_rate": 0.01639344262295082,
+    "accepted_error_rate_95": [
+      0.002899656114363977,
+      0.08719065627768062
+    ],
+    "right_accepted_share": 0.75,
+    "routed": 39,
+    "routed_rate": 0.39,
+    "e3_usd_per_1000": 0.121251,
+    "reasons": {
+      "line items: a free (N) line may be an item or a modifier": 15,
+      "line items: total found by arithmetic, not by a TOTAL line": 9,
+      "line items: expected total N, found N": 8,
+      "line items: items add up to N, subtotal is N": 7,
+      "line items: modifier lines were folded into the item above": 3,
+      "line items: N x N is not N": 2,
+      "line items: '...' may be an add-on to the item above": 2,
+      "line items: lines below the TOTAL line (a later total, tax) do not add up with it": 2,
+      "line items: no total": 2,
+      "line items: no items": 2
+    }
+  },
+  "strict": {
+    "receipts": 100,
+    "accepted": 53,
+    "accepted_rate": 0.53,
+    "accepted_wrong": 0,
+    "accepted_error_rate": 0.0,
+    "accepted_error_rate_95": [
+      0.0,
+      0.06758430445307662
+    ],
+    "right_accepted_share": 0.6625,
+    "routed": 47,
+    "routed_rate": 0.47,
+    "e3_usd_per_1000": 0.146123,
+    "reasons": {
+      "line items: a free (N) line may be an item or a modifier": 15,
+      "line items: '...' costs under a quarter of the item above": 13,
+      "line items: total found by arithmetic, not by a TOTAL line": 9,
+      "line items: expected total N, found N": 8,
+      "line items: items add up to N, subtotal is N": 7,
+      "line items: modifier lines were folded into the item above": 3,
+      "line items: N x N is not N": 2,
+      "line items: '...' may be an add-on to the item above": 2,
+      "line items: lines below the TOTAL line (a later total, tax) do not add up with it": 2,
+      "line items: no total": 2,
+      "line items: no items": 2
+    }
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "mode": "oracle",
+  "split": "validation",
+  "standard": {
+    "receipts": 100,
+    "accepted": 76,
+    "accepted_rate": 0.76,
+    "accepted_wrong": 3,
+    "accepted_error_rate": 0.039473684210526314,
+    "accepted_error_rate_95": [
+      0.013514390129808602,
+      0.10974967271462335
+    ],
+    "right_accepted_share": 0.8390804597701149,
+    "routed": 24,
+    "routed_rate": 0.24,
+    "e3_usd_per_1000": 0.074616,
+    "reasons": {
+      "line items: a free (N) line may be an item or a modifier": 8,
+      "line items: items add up to N, subtotal is N": 5,
+      "line items: expected total N, found N": 5,
+      "line items: total found by arithmetic, not by a TOTAL line": 5,
+      "line items: no items": 2,
+      "line items: N x N is not N": 1,
+      "line items: lines below the TOTAL line (a later total, tax) do not add up with it": 1,
+      "line items: modifier lines were folded into the item above": 1,
+      "line items: '...' may be an add-on to the item above": 1
+    }
+  },
+  "strict": {
+    "receipts": 100,
+    "accepted": 69,
+    "accepted_rate": 0.69,
+    "accepted_wrong": 2,
+    "accepted_error_rate": 0.028985507246376812,
+    "accepted_error_rate_95": [
+      0.007985035233144928,
+      0.09966773461265746
+    ],
+    "right_accepted_share": 0.7701149425287356,
+    "routed": 31,
+    "routed_rate": 0.31,
+    "e3_usd_per_1000": 0.096379,
+    "reasons": {
+      "line items: '...' costs under a quarter of the item above": 9,
+      "line items: a free (N) line may be an item or a modifier": 8,
+      "line items: items add up to N, subtotal is N": 5,
+      "line items: expected total N, found N": 5,
+      "line items: total found by arithmetic, not by a TOTAL line": 5,
+      "line items: no items": 2,
+      "line items: N x N is not N": 1,
+      "line items: lines below the TOTAL line (a later total, tax) do not add up with it": 1,
+      "line items: modifier lines were folded into the item above": 1,
+      "line items: '...' may be an add-on to the item above": 1
+    }
+  }
+}
