@@ -1,0 +1,64 @@
+{
+  "mode": "e2e",
+  "split": "train",
+  "standard": {
+    "receipts": 800,
+    "accepted": 420,
+    "accepted_rate": 0.525,
+    "accepted_wrong": 8,
+    "accepted_error_rate": 0.01904761904761905,
+    "accepted_error_rate_95": [
+      0.009682513074138328,
+      0.037131202238374655
+    ],
+    "right_accepted_share": 0.7215411558669002,
+    "routed": 380,
+    "routed_rate": 0.475,
+    "e3_usd_per_1000": 0.14767750000000002,
+    "reasons": {
+      "line items: items add up to N, subtotal is N": 100,
+      "line items: a free (N) line may be an item or a modifier": 93,
+      "line items: expected total N, found N": 92,
+      "line items: total found by arithmetic, not by a TOTAL line": 78,
+      "line items: no total": 61,
+      "line items: a name below the last item has no amount": 24,
+      "line items: modifier lines were folded into the item above": 21,
+      "line items: no items": 20,
+      "line items: an amount was computed from quantity x unit price, not read": 16,
+      "line items: N x N is not N": 14,
+      "line items: '...' may be an add-on to the item above": 9,
+      "line items: lines below the TOTAL line (a later total, tax) do not add up with it": 7
+    }
+  },
+  "strict": {
+    "receipts": 800,
+    "accepted": 382,
+    "accepted_rate": 0.4775,
+    "accepted_wrong": 3,
+    "accepted_error_rate": 0.007853403141361256,
+    "accepted_error_rate_95": [
+      0.0026743400566308674,
+      0.02283250005599566
+    ],
+    "right_accepted_share": 0.6637478108581436,
+    "routed": 418,
+    "routed_rate": 0.5225,
+    "e3_usd_per_1000": 0.16244524999999999,
+    "reasons": {
+      "line items: '...' costs under a quarter of the item above": 121,
+      "line items: items add up to N, subtotal is N": 100,
+      "line items: a free (N) line may be an item or a modifier": 93,
+      "line items: expected total N, found N": 92,
+      "line items: total found by arithmetic, not by a TOTAL line": 78,
+      "line items: no total": 61,
+      "line items: a name below the last item has no amount": 24,
+      "line items: modifier lines were folded into the item above": 21,
+      "line items: no items": 20,
+      "line items: an amount was computed from quantity x unit price, not read": 16,
+      "line items: N x N is not N": 14,
+      "line items: '...' may be an add-on to the item above": 9,
+      "line items: lines below the TOTAL line (a later total, tax) do not add up with it": 7,
+      "line items: \"CHINESE TE N KWAN'IM\" costs under a quarter of the item above": 1
+    }
+  }
+}

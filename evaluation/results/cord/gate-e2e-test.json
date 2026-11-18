@@ -1,0 +1,63 @@
+{
+  "mode": "e2e",
+  "split": "test",
+  "standard": {
+    "receipts": 100,
+    "accepted": 46,
+    "accepted_rate": 0.46,
+    "accepted_wrong": 2,
+    "accepted_error_rate": 0.043478260869565216,
+    "accepted_error_rate_95": [
+      0.012005193588830829,
+      0.1453252291905342
+    ],
+    "right_accepted_share": 0.7096774193548387,
+    "routed": 54,
+    "routed_rate": 0.54,
+    "e3_usd_per_1000": 0.16788599999999998,
+    "reasons": {
+      "line items: expected total N, found N": 17,
+      "line items: a free (N) line may be an item or a modifier": 14,
+      "line items: items add up to N, subtotal is N": 10,
+      "line items: no total": 10,
+      "line items: total found by arithmetic, not by a TOTAL line": 8,
+      "line items: modifier lines were folded into the item above": 5,
+      "line items: N x N is not N": 2,
+      "line items: lines below the TOTAL line (a later total, tax) do not add up with it": 2,
+      "line items: a name below the last item has no amount": 2,
+      "line items: no items": 2,
+      "line items: an amount was computed from quantity x unit price, not read": 2,
+      "line items: '...' may be an add-on to the item above": 1
+    }
+  },
+  "strict": {
+    "receipts": 100,
+    "accepted": 41,
+    "accepted_rate": 0.41,
+    "accepted_wrong": 0,
+    "accepted_error_rate": 0.0,
+    "accepted_error_rate_95": [
+      0.0,
+      0.08567044886890744
+    ],
+    "right_accepted_share": 0.6612903225806451,
+    "routed": 59,
+    "routed_rate": 0.59,
+    "e3_usd_per_1000": 0.183431,
+    "reasons": {
+      "line items: expected total N, found N": 17,
+      "line items: a free (N) line may be an item or a modifier": 14,
+      "line items: '...' costs under a quarter of the item above": 12,
+      "line items: items add up to N, subtotal is N": 10,
+      "line items: no total": 10,
+      "line items: total found by arithmetic, not by a TOTAL line": 8,
+      "line items: modifier lines were folded into the item above": 5,
+      "line items: N x N is not N": 2,
+      "line items: lines below the TOTAL line (a later total, tax) do not add up with it": 2,
+      "line items: a name below the last item has no amount": 2,
+      "line items: no items": 2,
+      "line items: an amount was computed from quantity x unit price, not read": 2,
+      "line items: '...' may be an add-on to the item above": 1
+    }
+  }
+}

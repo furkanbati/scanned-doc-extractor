@@ -214,7 +214,7 @@ summary[3].metric("Cost", f"${sum(item['result']['usd'] or 0 for item in ok):.4f
 if gated:
     # Passed every check: fields, sums, no add-on lines (extractor/gate.py).
     summary[4].metric("Accepted without a look", sum(1 for gate in gated if gate["accepted"]),
-                      help="Every check passed. On CORD about 1 in 50 of these was still wrong.")
+                      help="Every check passed. On CORD about 1 in 40 of these was still wrong.")
 
 st.subheader("Fields")
 st.caption("Edit any cell to correct it; downloads include your corrections. "
