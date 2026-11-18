@@ -13,7 +13,7 @@ gate ([reports/cord_gate.md](cord_gate.md)) then decides, the same way for both.
   [reports/cord_line_items.md](cord_line_items.md).
 
 **Test split: run once**, on 2026-11-18, with the prompt frozen at commit
-`6231c75`. The prompt was written before any receipt was read and was not
+`0a32b42`. The prompt was written before any receipt was read and was not
 changed after the validation run. Train (800 receipts, about 6 hours on this
 CPU) was not run.
 
