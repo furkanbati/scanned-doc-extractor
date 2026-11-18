@@ -119,6 +119,13 @@ tax, service, discount and total, and `needs_review` with the reasons. Amounts a
 plain decimal strings ("43636", "9999.99"). `/methods` and `/profiles` say which
 engines and modes return line items.
 
+`gate` (with line items; null otherwise) says whether the result passed every
+check and can be used without a look (`accepted`), and if not, why (`reasons`:
+field notes, line-item reasons, an item that looks like an add-on). Documents it
+does not accept are the ones to send on to a model or a person. On CORD it
+accepts about half of the receipts read end to end, and about 1 in 40 of those is
+still wrong: [reports/cord_gate.md](reports/cord_gate.md).
+
 An engine that cannot run on the server (no OpenAI key, no Ollama) is answered
 with 503 and the reason.
 
@@ -149,6 +156,7 @@ receipts. Results and error analysis: [reports/cord_line_items.md](reports/cord_
 bash scripts/download_cord.sh                                   # 2.3 GB, into data/cord/
 python -m evaluation.cord_eval --mode oracle --split validation # dataset words as OCR
 python -m evaluation.cord_eval --mode e2e --split validation    # RapidOCR on the image
+python -m evaluation.cord_gate --mode e2e --split validation    # the review gate on those results
 ```
 
 ## Limitations
