@@ -208,6 +208,7 @@ def test_extract_without_line_items_says_so(client):
     body = client.post("/extract", files={"file": ("r.png", png_bytes())}).json()
 
     assert body["line_items"] is None
+    assert body["gate"] is None
 
 
 def test_extract_returns_line_items(client, monkeypatch):
@@ -244,6 +245,16 @@ def test_extract_returns_line_items(client, monkeypatch):
     assert items["subtotal"] == "52636" and items["tax"] == "5264" and items["total"] == "57900"
     assert items["needs_review"] is True
     assert items["reasons"] == ["total found by arithmetic, not by a TOTAL line"]
+    # Field notes and line-item reasons, as the export's check column shows them.
+    assert body["gate"] == {
+        "accepted": False,
+        "reasons": [
+            "company not found",
+            "address not found",
+            "date not found",
+            "line items: total found by arithmetic, not by a TOTAL line",
+        ],
+    }
 
 
 def test_methods_and_modes_say_which_read_line_items(client):
@@ -279,7 +290,9 @@ def test_extract_checks_a_total_that_differs_from_the_line_items(client, monkeyp
     monkeypatch.setattr(api, "get_pipeline", lambda method: pipeline_with("10.00"))
     body = client.post("/extract", files={"file": ("r.png", png_bytes())}, data={"method": "e2"}).json()
     assert body["review"] == {"total": "differs from the line items' total 57900"}
+    assert body["gate"] == {"accepted": False, "reasons": ["total differs from the line items' total 57900"]}
 
     monkeypatch.setattr(api, "get_pipeline", lambda method: pipeline_with("57.900"))
     body = client.post("/extract", files={"file": ("r.png", png_bytes())}, data={"method": "e2"}).json()
     assert body["review"] == {}
+    assert body["gate"] == {"accepted": True, "reasons": []}
