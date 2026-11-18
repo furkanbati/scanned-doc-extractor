@@ -13,6 +13,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from PIL import Image, UnidentifiedImageError
 
 import catalogue
+from extractor.gate import decide
 from extractor.locate import locate_fields
 from extractor.pipeline import Pipeline, build_pipeline, load_engine
 from extractor.review import review_notes
@@ -128,6 +129,12 @@ async def extract(
         ) / 1e6
 
     fields = doctype.values(result.fields)
+    review = review_notes(
+        doctype,
+        result.fields,
+        result.line_items.total if result.line_items is not None else None,
+    )
+    line_items = result.line_items.to_json() if result.line_items is not None else None
 
     return {
         "profile": profile,
@@ -135,16 +142,15 @@ async def extract(
         "doctype": doctype.name,
         "fields": fields,
         "normalized": doctype.normalize(result.fields),
-        "review": review_notes(
-            doctype,
-            result.fields,
-            result.line_items.total if result.line_items is not None else None,
-        ),
+        "review": review,
         "lines": [{"text": line.text, "box": list(line.box)} for line in result.lines],
         "field_lines": locate_fields(fields, result.lines),
         # Items, subtotal, tax, total and needs_review; None when the engine
         # does not read line items.
-        "line_items": result.line_items.to_json() if result.line_items is not None else None,
+        "line_items": line_items,
+        # Whether the result can be used without a look (every check passed),
+        # or why not; None when the engine reads no line items.
+        "gate": decide(line_items, review).to_json() if line_items is not None else None,
         "seconds": round(seconds, 3),
         "usage": vars(result.usage) if result.usage else None,
         "usd": usd,

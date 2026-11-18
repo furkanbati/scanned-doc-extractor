@@ -30,12 +30,17 @@ def result_rows(results: list[dict]) -> list[dict]:
             continue
 
         row = {"file": item["file"], **result["fields"]}
-        notes = [f"{field} {note}" for field, note in result.get("review", {}).items()]
+        gate = result.get("gate")
+        if gate is not None:
+            # Everything the gate found: field notes, line-item reasons, add-ons.
+            notes = list(gate["reasons"])
+        else:
+            notes = [f"{field} {note}" for field, note in result.get("review", {}).items()]
+            line_items = result.get("line_items")
+            if line_items and line_items["needs_review"]:
+                notes.append(line_items_note(line_items))
         if result.get("pages", 1) > 1:
             notes.append(f"only page 1 of {result['pages']} read")
-        line_items = result.get("line_items")
-        if line_items and line_items["needs_review"]:
-            notes.append(line_items_note(line_items))
         row["check"] = "; ".join(notes)
         row["seconds"] = result["seconds"]
         row["usd"] = result["usd"]
@@ -46,6 +51,18 @@ def result_rows(results: list[dict]) -> list[dict]:
 
 def line_items_note(line_items: dict) -> str:
     return "line items: " + ", ".join(line_items["reasons"] or ["check"])
+
+
+def _items_check(result: dict) -> str:
+    """Why a receipt's items need a look, or "" when they do not."""
+
+    gate = result.get("gate")
+    if gate is not None:
+        return "; ".join(reason for reason in gate["reasons"] if reason.startswith("line items: "))
+
+    line_items = result["line_items"]
+
+    return line_items_note(line_items) if line_items["needs_review"] else ""
 
 
 def _number(value: str | None) -> int | float | None:
@@ -71,7 +88,7 @@ def line_item_rows(results: list[dict]) -> list[dict]:
         if not line_items:
             continue
 
-        check = line_items_note(line_items) if line_items["needs_review"] else ""
+        check = _items_check(item["result"])
         for number, entry in enumerate(line_items["items"], start=1):
             rows.append(
                 {
