@@ -128,6 +128,8 @@ with st.sidebar:
     )
     chosen = profiles[profile]
     st.write(chosen["description"])
+    if chosen.get("fallback_reason"):
+        st.info(f"Running {chosen['method'].upper()} for now. {chosen['fallback_reason']}.")
     st.caption(describe(chosen["measured"]))
     choice = ("profile", profile)
     available, reason, leaves = chosen["available"], chosen["unavailable_reason"], chosen["leaves_machine"]

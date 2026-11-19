@@ -87,6 +87,43 @@ def test_without_a_key_the_private_mode_is_the_default(client, monkeypatch):
     assert "OPENAI_API_KEY" in body["profiles"]["accurate"]["unavailable_reason"]
 
 
+def test_the_private_mode_runs_e5_when_ollama_is_up(client, monkeypatch):
+    monkeypatch.setattr(catalogue, "ollama_reachable", lambda: True)
+
+    private = client.get("/profiles").json()["profiles"]["private"]
+
+    assert private["method"] == "e5"
+    assert private["fallback_reason"] is None
+    assert private["measured"]["field_accuracy"] == pytest.approx(0.8253)
+    assert private["line_items"] is True
+
+
+def test_without_ollama_the_private_mode_falls_back_to_e2(client):
+    private = client.get("/profiles").json()["profiles"]["private"]
+
+    assert private["available"] is True
+    assert private["method"] == "e2"
+    assert "Ollama" in private["fallback_reason"]
+    assert private["leaves_machine"] is False
+
+
+def test_extract_in_the_private_mode_without_ollama_runs_e2(client):
+    response = client.post("/extract", files={"file": ("r.png", png_bytes())}, data={"profile": "private"})
+
+    assert response.status_code == 200
+    assert response.json()["method"] == "e2"
+
+
+def test_a_mode_without_a_fallback_stays_unavailable(client, monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY")
+
+    accurate = client.get("/profiles").json()["profiles"]["accurate"]
+
+    assert accurate["available"] is False
+    assert accurate["method"] == "e3"
+    assert accurate["fallback_reason"] is None
+
+
 def test_methods_list_every_engine_with_availability(client):
     engines = client.get("/methods").json()["methods"]
 
@@ -296,3 +333,20 @@ def test_extract_checks_a_total_that_differs_from_the_line_items(client, monkeyp
     body = client.post("/extract", files={"file": ("r.png", png_bytes())}, data={"method": "e2"}).json()
     assert body["review"] == {}
     assert body["gate"] == {"accepted": True, "reasons": []}
+
+
+def test_the_ollama_check_uses_ipv4_for_localhost(monkeypatch):
+    import contextlib
+    import urllib.request
+
+    urls = []
+
+    def fake_urlopen(url, timeout):
+        urls.append(url)
+        return contextlib.nullcontext()
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setenv("OLLAMA_HOST", "http://localhost:11434/")
+
+    assert catalogue._ollama_reachable.__wrapped__(0) is True
+    assert urls == ["http://127.0.0.1:11434/api/tags"]
