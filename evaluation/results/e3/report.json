@@ -3,27 +3,27 @@
     "config": "e3",
     "description": "OpenAI gpt-6-luna reads the image and returns the fields as JSON (no OCR).",
     "doctype": "receipt",
-    "date": "2026-10-31 10:04 UTC",
+    "date": "2026-11-19 17:04 UTC",
     "split": "test",
     "ocr": "none",
     "fields": "openai_vision (gpt-6-luna)",
-    "cpu": "Intel(R) Core(TM) Ultra 5 226V"
+    "cpu": "Intel64 Family 6 Model 197 Stepping 2, GenuineIntel"
   },
   "receipts": 400,
   "failed": 0,
   "field_accuracy": {
-    "company": 0.7525,
-    "address": 0.485,
-    "date": 0.975,
-    "total": 0.9775,
-    "mean": 0.7975
+    "company": 0.76,
+    "address": 0.48,
+    "date": 0.98,
+    "total": 0.9825,
+    "mean": 0.8006249999999999
   },
   "cer": null,
-  "seconds_per_receipt": 7.156486364559978,
+  "seconds_per_receipt": 11.71969811975013,
   "fields_from_labelled_lines": null,
   "tokens": {
-    "input": 887025,
-    "output": 71315
+    "input": 994225,
+    "output": 211166
   },
-  "usd_per_receipt": 0.0003109
+  "usd_per_receipt": 0.0005125137500000001
 }

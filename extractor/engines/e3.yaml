@@ -7,6 +7,8 @@ fields: openai_vision
 fields_options:
   model: gpt-6-luna
   reasoning_effort: low
+# The model also reads the purchased items and the sums below them.
+line_items: model
 # USD per million tokens, developers.openai.com/api/docs/pricing, 2026-10-31
 price_per_million_tokens:
   input: 0.10
@@ -14,9 +16,11 @@ price_per_million_tokens:
 
 # Results on the 400 test receipts (evaluation/results/e3/report.json).
 # Rerun the evaluation and update these when the engine changes.
+# With line items since 2026-11-19 (fields only: 0.7975, 7.16 s, $0.31).
+# The time includes retries of OpenAI server errors during the run.
 measured:
   receipts: 400
-  field_accuracy: 0.7975
-  seconds_per_document: 7.16
-  usd_per_1000: 0.3109
-  date: 2026-10-31
+  field_accuracy: 0.8006
+  seconds_per_document: 11.72
+  usd_per_1000: 0.5125
+  date: 2026-11-19
