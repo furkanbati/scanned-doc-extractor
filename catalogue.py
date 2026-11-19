@@ -44,6 +44,9 @@ def _ollama_reachable(_period: int) -> bool:
     """Checked at most once every 30 seconds (the argument is the time slot)."""
 
     host = os.getenv("OLLAMA_HOST", "http://ollama:11434").rstrip("/")
+    # On Windows "localhost" tries IPv6 first and waits about 2 s before
+    # falling back to IPv4, longer than the whole check may take.
+    host = host.replace("://localhost:", "://127.0.0.1:")
 
     def ping() -> bool:
         try:
@@ -105,11 +108,20 @@ def profiles() -> dict:
     result = {}
 
     for name, profile in spec["profiles"].items():
-        engine = all_engines[profile["method"]]
+        method = profile["method"]
+        engine = all_engines[method]
+        fallback_reason = None
+        fallback = profile.get("fallback")
+        if not engine["available"] and fallback and all_engines[fallback]["available"]:
+            fallback_reason = engine["unavailable_reason"]
+            method, engine = fallback, all_engines[fallback]
         result[name] = {
             "label": profile["label"],
             "description": profile["description"].strip(),
-            "method": profile["method"],
+            # The engine this mode runs now; differs from profiles.yaml's
+            # `method` while that engine cannot run here.
+            "method": method,
+            "fallback_reason": fallback_reason,
             "leaves_machine": engine["leaves_machine"],
             "line_items": engine["line_items"],
             "available": engine["available"],
