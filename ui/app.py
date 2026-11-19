@@ -375,7 +375,7 @@ item_rows = line_item_rows(items)
 final_items = []
 if item_rows:
     st.subheader("Line items (experimental)")
-    st.caption("Each purchased item with its amount, read by rules from the OCR boxes. "
+    st.caption("Each purchased item with its amount, read from the receipt by the chosen engine. "
                "Where the items, subtotal, tax and total do not add up, check says why; "
                "edit any cell to correct it.")
     items_table = pandas.DataFrame(item_rows, columns=columns(item_rows))

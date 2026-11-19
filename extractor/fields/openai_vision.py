@@ -1,4 +1,8 @@
-"""OpenAI vision: the model reads the document image and returns the fields as JSON."""
+"""OpenAI vision: the model reads the document image and returns the fields as JSON.
+
+Asked for line items (line_items: model), it also returns the purchased items
+and the sums below them in the same answer (extractor/fields/model_items.py).
+"""
 
 import base64
 import io
@@ -8,6 +12,8 @@ from PIL import Image
 
 from extractor.ocr.base import OcrLine
 from extractor.fields.base import Extraction, Usage
+from extractor.fields.model_items import INSTRUCTIONS as ITEM_INSTRUCTIONS
+from extractor.fields.model_items import parse_line_items, with_line_items
 from extractor.fields.prompt import instructions, json_schema, parse_fields
 from extractor.schema import DocumentType
 
@@ -29,6 +35,7 @@ class OpenAIVisionExtractor:
         model: str = "gpt-6-luna",
         reasoning_effort: str | None = "low",
         detail: str = "high",
+        line_items: bool = False,
         client=None,
     ):
         if client is None:
@@ -41,12 +48,20 @@ class OpenAIVisionExtractor:
         self.model = model
         self.reasoning_effort = reasoning_effort
         self.detail = detail
+        # Also ask for the purchased items and the sums below them.
+        self.line_items = line_items
 
-    def extract(self, image: Image.Image, lines: list[OcrLine]) -> Extraction:
+    def respond(self, image: Image.Image) -> tuple[str, Usage]:
+        """The model's raw JSON answer and the tokens it cost (for the CORD evaluation's cache)."""
+
+        system, schema = instructions(self.doctype), json_schema(self.doctype)
+        if self.line_items:
+            system, schema = system + ITEM_INSTRUCTIONS, with_line_items(schema)
+
         request = {
             "model": self.model,
             "messages": [
-                {"role": "system", "content": instructions(self.doctype)},
+                {"role": "system", "content": system},
                 {
                     "role": "user",
                     "content": [
@@ -61,7 +76,7 @@ class OpenAIVisionExtractor:
                 "type": "json_schema",
                 "json_schema": {
                     "name": self.doctype.name,
-                    "schema": json_schema(self.doctype),
+                    "schema": schema,
                     "strict": True,
                 },
             },
@@ -73,10 +88,16 @@ class OpenAIVisionExtractor:
         response = self.client.chat.completions.create(**request)
         usage = response.usage
 
+        return response.choices[0].message.content or "", Usage(
+            input_tokens=usage.prompt_tokens if usage else 0,
+            output_tokens=usage.completion_tokens if usage else 0,
+        )
+
+    def extract(self, image: Image.Image, lines: list[OcrLine]) -> Extraction:
+        content, usage = self.respond(image)
+
         return Extraction(
-            fields=parse_fields(response.choices[0].message.content or "", self.doctype),
-            usage=Usage(
-                input_tokens=usage.prompt_tokens if usage else 0,
-                output_tokens=usage.completion_tokens if usage else 0,
-            ),
+            fields=parse_fields(content, self.doctype),
+            line_items=parse_line_items(content) if self.line_items else None,
+            usage=usage,
         )

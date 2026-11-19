@@ -12,6 +12,10 @@
 - e5: image -> local vision model (E5, Ollama) asked for the items, as
   extractor/engines/e5.yaml runs it. Answers are cached per split in
   data/cord/e5/<split>.jsonl; set OLLAMA_HOST to reach the server.
+- e3: image -> OpenAI vision model (E3) asked for the items, as
+  extractor/engines/e3.yaml runs it with line_items: model. Needs
+  OPENAI_API_KEY and costs money; answers and their tokens are cached in
+  data/cord/e3/<split>.jsonl, and the summary adds the cost per receipt.
 
 The summary goes to evaluation/results/cord/<mode>-<split>.json, the
 per-receipt results (labels included) next to it as .receipts.jsonl, which is
@@ -32,7 +36,9 @@ from extractor.fields.model_items import parse_line_items
 from extractor.ocr.base import OcrLine
 
 DEFAULT_OUTPUT = Path(__file__).parent / "results" / "cord"
-MODES = ("oracle", "e2e", "e5")
+MODES = ("oracle", "e2e", "e5", "e3")
+# Modes where a model reads the image and returns the items itself.
+MODEL_MODES = ("e5", "e3")
 
 
 def load_ocr_cache(path: Path) -> dict[str, dict]:
@@ -67,15 +73,22 @@ def ocr_lines(sample: CordSample, cache: dict[str, dict], cache_path: Path, engi
 
 
 def e5_answer(sample: CordSample, cache: dict[str, dict], cache_path: Path, extractor) -> tuple[str, float]:
-    """E5's raw JSON answer for the receipt and the seconds it took."""
+    """The model's raw JSON answer for the receipt and the seconds it took.
+
+    E3's extractor also reports the tokens, which are cached for the cost.
+    """
 
     if sample.id not in cache:
         image = sample.image()
         start = time.perf_counter()
-        response = extractor.answer(image)
+        if hasattr(extractor, "respond"):
+            response, usage = extractor.respond(image)
+            tokens = {"input_tokens": usage.input_tokens, "output_tokens": usage.output_tokens}
+        else:
+            response, tokens = extractor.answer(image), {}
         seconds = time.perf_counter() - start
 
-        cache[sample.id] = {"id": sample.id, "seconds": seconds, "content": response}
+        cache[sample.id] = {"id": sample.id, "seconds": seconds, "content": response, **tokens}
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         with cache_path.open("a", encoding="utf-8") as file:
             file.write(json.dumps(cache[sample.id], ensure_ascii=False) + "\n")
@@ -98,6 +111,29 @@ def e5_extractor(threads: int | None = None):
     return LocalVisionExtractor(load_doctype(config["doctype"]), **options)
 
 
+def e3_extractor():
+    from extractor.fields.openai_vision import OpenAIVisionExtractor
+    from extractor.pipeline import load_engine
+    from extractor.schema import load_doctype
+
+    config = load_engine("e3")
+
+    return OpenAIVisionExtractor(load_doctype(config["doctype"]), **{**config["fields_options"], "line_items": True})
+
+
+def usd_per_receipt(entries: list[dict]) -> float | None:
+    """E3's mean cost per receipt from the cached tokens, at e3.yaml's prices."""
+
+    if not entries or any("input_tokens" not in entry for entry in entries):
+        return None
+    from extractor.pipeline import load_engine
+
+    prices = load_engine("e3")["price_per_million_tokens"]
+    total = sum(entry["input_tokens"] * prices["input"] + entry["output_tokens"] * prices["output"] for entry in entries)
+
+    return total / 1e6 / len(entries)
+
+
 def text_amounts(lines: list[OcrLine]) -> set[Decimal]:
     """Every amount the OCR read, for telling OCR errors from rule errors."""
 
@@ -112,7 +148,7 @@ def text_amounts(lines: list[OcrLine]) -> set[Decimal]:
 
 
 def run(mode: str, split: str, root: Path, limit: int | None, output: Path, threads: int | None = None) -> dict:
-    cache_path = Path(root) / ("e5" if mode == "e5" else "ocr") / f"{split}.jsonl"
+    cache_path = Path(root) / (mode if mode in MODEL_MODES else "ocr") / f"{split}.jsonl"
     cache = load_ocr_cache(cache_path) if mode != "oracle" else {}
     engine = None
 
@@ -120,9 +156,9 @@ def run(mode: str, split: str, root: Path, limit: int | None, output: Path, thre
     samples = load_cord(root, split, limit, images=mode != "oracle")
 
     for number, sample in enumerate(samples, start=1):
-        if mode == "e5":
+        if mode in MODEL_MODES:
             if engine is None and sample.id not in cache:
-                engine = e5_extractor(threads)
+                engine = e5_extractor(threads) if mode == "e5" else e3_extractor()
             content, model_seconds = e5_answer(sample, cache, cache_path, engine)
             prediction = parse_line_items(content)
             seconds.append(model_seconds)
@@ -156,6 +192,8 @@ def run(mode: str, split: str, root: Path, limit: int | None, output: Path, thre
             print(f"{number} receipts", flush=True)
 
     summary = {"mode": mode, "split": split, **summarize(scores, seconds)}
+    if mode == "e3":
+        summary["usd_per_receipt"] = usd_per_receipt([cache[record["id"]] for record in records])
 
     output.mkdir(parents=True, exist_ok=True)
     name = f"{mode}-{split}" + (f"-limit{limit}" if limit else "")

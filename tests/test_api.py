@@ -72,7 +72,7 @@ def test_profiles_carry_engine_and_measured_numbers(client):
     assert accurate["leaves_machine"] is True
     assert accurate["available"] is True
     assert accurate["measured"]["receipts"] == 400
-    assert accurate["measured"]["field_accuracy"] == pytest.approx(0.7975)
+    assert accurate["measured"]["field_accuracy"] == pytest.approx(0.8006)
     assert body["profiles"]["private"]["leaves_machine"] is False
     assert "Google Gemini" in body["planned"]
 
@@ -299,9 +299,10 @@ def test_methods_and_modes_say_which_read_line_items(client):
     profiles = client.get("/profiles").json()["profiles"]
 
     assert engines["e2"]["line_items"] is True
-    assert engines["e3"]["line_items"] is False
+    assert engines["e3"]["line_items"] is True
+    assert engines["e1"]["line_items"] is False
     assert profiles["private"]["line_items"] is True
-    assert profiles["accurate"]["line_items"] is False
+    assert profiles["accurate"]["line_items"] is True
 
 
 def test_extract_checks_a_total_that_differs_from_the_line_items(client, monkeypatch):

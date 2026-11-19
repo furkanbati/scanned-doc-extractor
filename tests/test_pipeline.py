@@ -107,10 +107,10 @@ def test_line_items_need_ocr():
         Pipeline(None, Vision(), line_items=True)
 
 
-def test_e2_and_e5_read_line_items():
-    assert reads_line_items(load_engine("e2"), RECEIPT)
-    assert reads_line_items(load_engine("e5"), RECEIPT)
-    for name in ("e1", "e3", "e4"):
+def test_e2_e3_and_e5_read_line_items():
+    for name in ("e2", "e3", "e5"):
+        assert reads_line_items(load_engine(name), RECEIPT)
+    for name in ("e1", "e4"):
         assert not reads_line_items(load_engine(name), RECEIPT)
 
 
