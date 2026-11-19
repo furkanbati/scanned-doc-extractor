@@ -1,0 +1,29 @@
+{
+  "metadata": {
+    "config": "e5",
+    "description": "A local vision model (Ollama) reads the image and returns the fields as JSON (no OCR).",
+    "doctype": "receipt",
+    "date": "2026-11-19 12:27 UTC",
+    "split": "test",
+    "ocr": "none",
+    "fields": "local_vision (qwen3-vl:2b-instruct)",
+    "cpu": "Intel64 Family 6 Model 197 Stepping 2, GenuineIntel"
+  },
+  "receipts": 400,
+  "failed": 0,
+  "field_accuracy": {
+    "company": 0.86,
+    "address": 0.5675,
+    "date": 0.9925,
+    "total": 0.88,
+    "mean": 0.825
+  },
+  "cer": null,
+  "seconds_per_receipt": 20.966172269999806,
+  "fields_from_labelled_lines": null,
+  "tokens": {
+    "input": 658075,
+    "output": 118358
+  },
+  "usd_per_receipt": null
+}

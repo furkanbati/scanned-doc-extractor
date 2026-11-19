@@ -41,9 +41,9 @@ chosen directly, and the providers not built yet are listed as planned.
 |---|---|---|---|---|---|---|
 | E1 Tesseract + rules (baseline) | 0.464 | 0.498 | 0.465 | 1.34 | 0 | no |
 | E2 RapidOCR (PP-OCRv6) + rules | 0.631 | 0.686 | 0.364 | 3.57 | 0 | no |
-| E3 OpenAI gpt-6-luna, image to JSON | **0.797** | **0.858** | - | 7.16 | 0.31 | yes |
-| E4 RapidOCR + local LLM (qwen3.5:4b) | not measured yet | | | | 0 | no |
-| E5 local vision model (qwen3-vl:2b-instruct) | not measured yet | | | | 0 | no |
+| E3 OpenAI gpt-6-luna, image to JSON | 0.797 | 0.858 | - | 7.16 | 0.31 | yes |
+| E4 RapidOCR + local LLM (qwen3.5:4b) | 0.744 | 0.827 | 0.364 | 10.3 (iGPU) | 0 | no |
+| E5 local vision model (qwen3-vl:2b-instruct) | **0.825** | **0.880** | - | 21.0 (iGPU) | 0 | no |
 
 Field accuracy is the share of fields (company, address, date, total) that match
 the label exactly after normalization (case, spaces, date format, amount format).
@@ -51,10 +51,12 @@ the label exactly after normalization (case, spaces, date format, amount format)
 spacing or punctuation, because the labels themselves write the same address
 both ways. Per field, per error kind: [evaluation/results/comparison.md](evaluation/results/comparison.md).
 
-E4 and E5 run their models on the CPU through Ollama and need more memory than
-the 7.5 GB Docker had on the development laptop; see [docs/local-runs.md](docs/local-runs.md).
+E4 and E5 were measured with Ollama for Windows on the laptop's Intel Arc 130T
+iGPU (Vulkan, `OLLAMA_IGPU_ENABLE=1`); on its CPU they take about 2.8 times as
+long. E5 also reads the line items in the same call, which its time includes.
+See [docs/local-runs.md](docs/local-runs.md).
 
-Measured on an Intel Core Ultra 5 226V, CPU only. OpenAI prices as published on
+Measured on an Intel Core Ultra 5 226V; E1 to E3 on the CPU only. OpenAI prices as published on
 2026-10-31.
 
 ## What the numbers say
@@ -172,8 +174,7 @@ python -m evaluation.cord_gate --hybrid --split validation       # E2, then E5 f
 - The *check* column only catches values that are missing or malformed. A
   well-formed but wrong value, such as a misread company name, is not flagged.
 - Only the first page of a PDF is read.
-- E4 and E5 are not measured on SROIE fields yet. E5's line items are measured
-  on CORD: [reports/cord_e5_line_items.md](reports/cord_e5_line_items.md).
+- E5's line items are measured on CORD, not SROIE: [reports/cord_e5_line_items.md](reports/cord_e5_line_items.md).
 - Line items are measured on Indonesian receipts (CORD), not on the Malaysian
   ones the fields are measured on (SROIE has no item labels). About half of the
   CORD receipts read end to end are flagged for review. E2 and E5 return them.

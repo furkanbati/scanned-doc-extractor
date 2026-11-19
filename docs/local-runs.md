@@ -37,7 +37,8 @@ are not run again. The checkpoint is removed once the reports are written.
 |---|---|---|---|
 | E4, qwen3.5:4b, dev | first 20 | 0.713 | 36 (4096-token context) |
 | E4, test | 101 of 400, stopped | - | 20 (3072-token context) |
-| E5 | not run | - | - |
+| E5, qwen3-vl:2b-instruct, test, Arc 130T iGPU | 400 | 0.825 | 21.0 (fields and line items) |
+| E4, qwen3.5:4b, test, Arc 130T iGPU | 400 | 0.744 | 10.3 |
 
 ## Two things that made E5 fail or crawl
 

@@ -4,11 +4,15 @@ SROIE test split, 400 receipts. Field accuracy is the normalized exact match (`e
 
 ## Results
 
+E4 and E5 ran on the Intel Arc 130T iGPU through Ollama (Vulkan), the others on the CPU.
+
 | Experiment | company | address | date | total | Mean | Mean, ignoring spacing | s/receipt | USD per 1,000 | Leaves the machine |
 |---|---|---|---|---|---|---|---|---|---|
 | e1: Baseline. Tesseract on the raw image, rule and regex fields. | 0.355 | 0.190 | 0.745 | 0.565 | **0.464** | 0.498 | 1.34 | 0 | no |
 | e2: RapidOCR (PP-OCRv6 CNNs) on the raw image, rule and regex fields. | 0.477 | 0.345 | 0.960 | 0.740 | **0.631** | 0.686 | 3.57 | 0 | no |
 | e3: OpenAI gpt-6-luna reads the image and returns the fields as JSON (no OCR). | 0.752 | 0.485 | 0.975 | 0.978 | **0.797** | 0.858 | 7.16 | 0.31 | yes |
+| e4: RapidOCR (PP-OCRv6) lines, a local LLM (Ollama) returns the fields as JSON. | 0.672 | 0.405 | 0.975 | 0.925 | **0.744** | 0.827 | 10.31 | 0 | no |
+| e5: A local vision model (Ollama) reads the image and returns the fields as JSON (no OCR). | 0.860 | 0.568 | 0.993 | 0.880 | **0.825** | 0.880 | 20.97 | 0 | no |
 
 ## What kind of errors
 
@@ -28,6 +32,14 @@ Every field that does not match its label, by kind: **format** (same letters and
 | e3 | address | 81 | 46 | 0 | 79 | 206 |
 | e3 | date | 0 | 9 | 0 | 1 | 10 |
 | e3 | total | 0 | 7 | 0 | 2 | 9 |
+| e4 | company | 28 | 33 | 0 | 70 | 131 |
+| e4 | address | 103 | 65 | 1 | 69 | 238 |
+| e4 | date | 0 | 5 | 0 | 5 | 10 |
+| e4 | total | 1 | 21 | 0 | 8 | 30 |
+| e5 | company | 6 | 14 | 0 | 36 | 56 |
+| e5 | address | 82 | 43 | 0 | 48 | 173 |
+| e5 | date | 0 | 3 | 0 | 0 | 3 |
+| e5 | total | 0 | 28 | 0 | 20 | 48 |
 
 ## Hardest receipts for e3
 
