@@ -34,7 +34,7 @@ class FakePipeline:
 def pipeline(monkeypatch):
     fake = FakePipeline()
     monkeypatch.setattr(api, "get_pipeline", lambda method: fake)
-    monkeypatch.setattr(catalogue, "ollama_reachable", lambda: False)
+    monkeypatch.setattr(catalogue, "ollama_models", lambda: None)
     monkeypatch.setenv("OPENAI_API_KEY", "test")
     monkeypatch.delenv("DEFAULT_PROFILE", raising=False)
 
@@ -88,7 +88,7 @@ def test_without_a_key_the_private_mode_is_the_default(client, monkeypatch):
 
 
 def test_the_private_mode_runs_e5_when_ollama_is_up(client, monkeypatch):
-    monkeypatch.setattr(catalogue, "ollama_reachable", lambda: True)
+    monkeypatch.setattr(catalogue, "ollama_models", lambda: {"qwen3-vl:2b-instruct"})
 
     private = client.get("/profiles").json()["profiles"]["private"]
 
@@ -335,18 +335,58 @@ def test_extract_checks_a_total_that_differs_from_the_line_items(client, monkeyp
     assert body["gate"] == {"accepted": True, "reasons": []}
 
 
-def test_the_ollama_check_uses_ipv4_for_localhost(monkeypatch):
-    import contextlib
+def test_the_ollama_check_uses_ipv4_for_localhost_and_lists_models(monkeypatch):
     import urllib.request
 
     urls = []
 
     def fake_urlopen(url, timeout):
         urls.append(url)
-        return contextlib.nullcontext()
+        return io.BytesIO(b'{"models": [{"name": "qwen3-vl:2b-instruct"}]}')
 
     monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
     monkeypatch.setenv("OLLAMA_HOST", "http://localhost:11434/")
 
-    assert catalogue._ollama_reachable.__wrapped__(0) is True
+    assert catalogue._ollama_models.__wrapped__(0) == {"qwen3-vl:2b-instruct"}
     assert urls == ["http://127.0.0.1:11434/api/tags"]
+
+
+def test_an_ollama_without_the_model_keeps_the_fallback(client, monkeypatch):
+    monkeypatch.setattr(catalogue, "ollama_models", lambda: {"llama3:latest"})
+
+    private = client.get("/profiles").json()["profiles"]["private"]
+
+    assert private["method"] == "e2"
+    assert private["fallback_reason"] == "The local model qwen3-vl:2b-instruct is not downloaded yet"
+
+
+def test_a_model_name_without_a_tag_matches_latest():
+    assert catalogue.has_model({"qwen3-vl:latest"}, "qwen3-vl")
+    assert not catalogue.has_model({"qwen3-vl:latest"}, "qwen3-vl:2b-instruct")
+
+
+def test_local_model_status_without_ollama(client):
+    body = client.get("/local-model").json()
+
+    assert body["running"] is False
+    assert body["downloaded"] is False
+    assert body["model"] == "qwen3-vl:2b-instruct"
+    assert body["download"]["status"] in {"idle", "done", "failed"}
+
+
+def test_local_model_status_with_the_model(client, monkeypatch):
+    import local_model
+
+    monkeypatch.setattr(catalogue, "ollama_models", lambda: {"qwen3-vl:2b-instruct"})
+    monkeypatch.setattr(local_model, "on_gpu", lambda host: True)
+
+    body = client.get("/local-model").json()
+
+    assert (body["running"], body["downloaded"], body["on_gpu"]) == (True, True, True)
+
+
+def test_the_download_needs_a_running_ollama(client):
+    response = client.post("/local-model/download")
+
+    assert response.status_code == 503
+    assert "Ollama" in response.json()["detail"]

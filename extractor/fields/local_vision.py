@@ -28,6 +28,10 @@ def jpeg_bytes(image: Image.Image, max_side: int | None = None, quality: int = 9
     return buffer.getvalue()
 
 
+def default_threads() -> int:
+    return max(1, (os.cpu_count() or 2) // 2)
+
+
 class LocalVisionExtractor:
     name = "local_vision"
     needs_ocr = False
@@ -58,9 +62,11 @@ class LocalVisionExtractor:
         self.max_side = max_side
         # Also ask for the purchased items and the sums below them.
         self.line_items = line_items
-        # CPU threads for Ollama; its default (every core) can be far slower
-        # where the cores are shared, as in a Docker VM on a laptop.
-        self.threads = threads
+        # CPU threads for Ollama. Its default (one per logical core) was 15
+        # times slower in a Docker VM on a 14-core laptop; half the logical
+        # cores, about one per physical core, is the default here. It does not
+        # matter when the model runs on a GPU.
+        self.threads = threads or default_threads()
 
     def answer(self, image: Image.Image) -> str:
         """The model's raw JSON answer (for the CORD evaluation's cache)."""
