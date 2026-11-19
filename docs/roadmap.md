@@ -18,8 +18,10 @@ section.
 
 ## Checks and the hybrid chain
 
-5. **Rejected documents are not sent on to E5.** The E2 -> E5 -> person chain
-   exists only in the evaluation (`cord_gate --hybrid`), not in the API.
+5. **No chained mode is offered.** The API runs chains (profiles.yaml `chain`),
+   but on SROIE the gate keeps few receipts with E2 and those have misread
+   names (reports/sroie_chain.md). The gate needs a check on company and
+   address before a chain is offered for header fields.
 6. **No retry with feedback.** When a model's numbers do not add up, it is not
    asked again ("the items add up to X, you said Y").
 7. **User corrections are not stored.** Edits in the UI only go into the

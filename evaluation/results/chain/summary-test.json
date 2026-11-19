@@ -1,0 +1,75 @@
+{
+  "split": "test",
+  "receipts": 400,
+  "kept_by_e2": 21,
+  "e3": {
+    "receipts": 400,
+    "kept_by_e2": 21,
+    "sent_on": 379,
+    "field_accuracy": {
+      "company": 0.735,
+      "address": 0.4675,
+      "date": 0.98,
+      "total": 0.9825,
+      "mean": 0.79125
+    },
+    "e2_on_kept": {
+      "company": 0.47619047619047616,
+      "address": 0.09523809523809523,
+      "date": 1.0,
+      "total": 1.0,
+      "mean": 0.6428571428571428
+    },
+    "second_on_kept": {
+      "company": 0.9523809523809523,
+      "address": 0.3333333333333333,
+      "date": 1.0,
+      "total": 1.0,
+      "mean": 0.8214285714285714
+    },
+    "second_alone": {
+      "company": 0.76,
+      "address": 0.48,
+      "date": 0.98,
+      "total": 0.9825,
+      "mean": 0.8006249999999999
+    },
+    "seconds_per_receipt": 15.870916468463244,
+    "usd_per_1000": 0.4856067781250001
+  },
+  "e5": {
+    "receipts": 400,
+    "kept_by_e2": 21,
+    "sent_on": 379,
+    "field_accuracy": {
+      "company": 0.84,
+      "address": 0.54,
+      "date": 0.9925,
+      "total": 0.8825,
+      "mean": 0.81375
+    },
+    "e2_on_kept": {
+      "company": 0.47619047619047616,
+      "address": 0.09523809523809523,
+      "date": 1.0,
+      "total": 1.0,
+      "mean": 0.6428571428571428
+    },
+    "second_on_kept": {
+      "company": 0.8571428571428571,
+      "address": 0.6190476190476191,
+      "date": 1.0,
+      "total": 0.9523809523809523,
+      "mean": 0.8571428571428572
+    },
+    "second_alone": {
+      "company": 0.86,
+      "address": 0.5675,
+      "date": 0.9925,
+      "total": 0.88,
+      "mean": 0.825
+    },
+    "seconds_per_receipt": 24.631950725824815,
+    "usd_per_1000": 0.0
+  }
+}
