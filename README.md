@@ -172,7 +172,7 @@ every purchased item with its amount, the subtotal, tax, service, discount and
 total, and a `needs_review` flag when the numbers do not add up. The receipt
 document type declares them (`line_items: true`) and an engine reads them when its
 YAML says how: `line_items: rules` (E2, from the OCR boxes) or `line_items: model`
-(E5: the vision model is asked for the items in the same call as the fields;
+(E5 and E3: the vision model is asked for the items in the same call as the fields;
 its answer is parsed and reconciled like the rules'). For E2, OCR runs once: the rules get
 the boxes as detected, the field rules the same boxes joined into lines as before,
 so E2's field results do not change. It is measured
@@ -181,6 +181,11 @@ on [CORD v2](https://huggingface.co/datasets/naver-clova-ix/cord-v2)
 Document Intelligence Workshop at NeurIPS 2019; CC-BY-4.0), 1,000 Indonesian
 receipts. Results and error analysis: [reports/cord_line_items.md](reports/cord_line_items.md).
 
+On the CORD test split E3 gets 87 of 100 receipts' items fully right, E5 64 and
+E2 62; E2 first and E3 for what E2's gate rejects handles 76 in 100 without a
+person, for about $0.21 per 1,000 receipts:
+[reports/cord_e3_line_items.md](reports/cord_e3_line_items.md).
+
 ```bash
 bash scripts/download_cord.sh                                   # 2.3 GB, into data/cord/
 python -m evaluation.cord_eval --mode oracle --split validation # dataset words as OCR
@@ -188,6 +193,8 @@ python -m evaluation.cord_eval --mode e2e --split validation    # RapidOCR on th
 python -m evaluation.cord_gate --mode e2e --split validation    # the review gate on those results
 OLLAMA_HOST=http://localhost:11434 python -m evaluation.cord_eval --mode e5 --split validation --threads 8
 python -m evaluation.cord_gate --hybrid --split validation       # E2, then E5 for what E2's gate rejects
+python -m evaluation.cord_eval --mode e3 --split validation      # OpenAI; about $0.04 per 100 receipts
+python -m evaluation.cord_gate --hybrid --second e3 --split validation
 ```
 
 ## Limitations
@@ -199,7 +206,9 @@ python -m evaluation.cord_gate --hybrid --split validation       # E2, then E5 f
 - The *check* column only catches values that are missing or malformed. A
   well-formed but wrong value, such as a misread company name, is not flagged.
 - Only the first page of a PDF is read.
-- E5's line items are measured on CORD, not SROIE: [reports/cord_e5_line_items.md](reports/cord_e5_line_items.md).
+- E5's and E3's line items are measured on CORD, not SROIE:
+  [reports/cord_e5_line_items.md](reports/cord_e5_line_items.md),
+  [reports/cord_e3_line_items.md](reports/cord_e3_line_items.md).
 - Line items are measured on Indonesian receipts (CORD), not on the Malaysian
   ones the fields are measured on (SROIE has no item labels). About half of the
   CORD receipts read end to end are flagged for review. E2 and E5 return them.

@@ -1,0 +1,51 @@
+{
+  "mode": "e3",
+  "split": "test",
+  "standard": {
+    "receipts": 100,
+    "accepted": 73,
+    "accepted_rate": 0.73,
+    "accepted_wrong": 3,
+    "accepted_error_rate": 0.0410958904109589,
+    "accepted_error_rate_95": [
+      0.01407368523428873,
+      0.1140027733506444
+    ],
+    "right_accepted_share": 0.8045977011494253,
+    "routed": 27,
+    "routed_rate": 0.27,
+    "e3_usd_per_1000": 0.08394299999999999,
+    "reasons": {
+      "line items: a free (N) line may be an item or a modifier": 13,
+      "line items: items add up to N, subtotal is N": 8,
+      "line items: expected total N, found N": 7,
+      "line items: add-on lines were added to their item": 2,
+      "line items: '...' may be an add-on to the item above": 1,
+      "line items: no items": 1
+    }
+  },
+  "strict": {
+    "receipts": 100,
+    "accepted": 63,
+    "accepted_rate": 0.63,
+    "accepted_wrong": 1,
+    "accepted_error_rate": 0.015873015873015872,
+    "accepted_error_rate_95": [
+      0.0028074219075510873,
+      0.0845872544616561
+    ],
+    "right_accepted_share": 0.7126436781609196,
+    "routed": 37,
+    "routed_rate": 0.37,
+    "e3_usd_per_1000": 0.11503300000000001,
+    "reasons": {
+      "line items: '...' costs under a quarter of the item above": 13,
+      "line items: a free (N) line may be an item or a modifier": 13,
+      "line items: items add up to N, subtotal is N": 8,
+      "line items: expected total N, found N": 7,
+      "line items: add-on lines were added to their item": 2,
+      "line items: '...' may be an add-on to the item above": 1,
+      "line items: no items": 1
+    }
+  }
+}

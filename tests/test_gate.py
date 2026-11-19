@@ -168,3 +168,24 @@ def test_the_chain_sends_only_what_e2_rejects_to_e5(tmp_path):
     assert summary["accepted_error_rate"] == 0.5
     assert summary["seconds_per_receipt"] == 2.0 + 30.0 * 2 / 3
     assert "| validation | standard | 3 | 1 (0 wrong) | 2 | 1 (1 wrong) | 1 |" in hybrid_table(tmp_path)
+
+
+def test_the_chain_can_send_rejected_receipts_to_e3_and_pay_only_for_those(tmp_path):
+    from evaluation.cord_gate import hybrid_table, run_hybrid
+
+    e2 = {"a": record(GOOD, True), "b": record(line_items([item("CAKE", "9000")], ["no total"]), True)}
+    e3 = {"a": record(GOOD, True), "b": record(GOOD, True)}
+    for mode, records in (("e2e", e2), ("e3", e3)):
+        with (tmp_path / f"{mode}-validation.receipts.jsonl").open("w", encoding="utf-8") as file:
+            for receipt_id, entry in records.items():
+                file.write(json.dumps({"id": receipt_id, **entry}) + "\n")
+    (tmp_path / "e2e-validation.json").write_text(json.dumps({"seconds_per_receipt": 2.0}))
+    (tmp_path / "e3-validation.json").write_text(json.dumps({"seconds_per_receipt": 5.0, "usd_per_receipt": 0.0004}))
+
+    summary = run_hybrid("validation", tmp_path, "e3")["standard"]
+
+    assert (summary["accepted_by_e2"], summary["sent_to_e3"], summary["accepted_by_e3"]) == (1, 1, 1)
+    assert summary["usd_per_receipt"] == 0.0004 / 2
+    assert (tmp_path / "hybrid-e3-validation.json").is_file()
+    assert "| validation | standard | 2 | 1 (0 wrong) | 1 | 1 (0 wrong) | 0 |" in hybrid_table(tmp_path, "e3")
+    assert "$0.200 |" in hybrid_table(tmp_path, "e3")
