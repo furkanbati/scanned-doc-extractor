@@ -80,7 +80,7 @@ class Pipeline:
 
 
 # Field extractors that can be asked for line items (line_items: model).
-MODEL_LINE_ITEMS = {"local_vision"}
+MODEL_LINE_ITEMS = {"local_vision", "openai_vision"}
 
 
 def build_ocr(name: str, options: dict | None = None) -> OcrEngine | None:

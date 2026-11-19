@@ -6,8 +6,8 @@ section.
 
 ## Line items
 
-1. **E3 and E4 do not read line items.** Their prompts ask only for the four
-   header fields. E5 shows how: ask for the items in the same call and run the
+1. **E4 does not read line items.** Its prompt asks only for the four
+   header fields. E5 and E3 show how: ask for the items in the same call and run the
    answer through `parse_line_items` (extractor/fields/model_items.py).
 2. **E4's LLM never sees the boxes.** It gets OCR lines joined into plain text.
    Rows with the amount column marked (from the line-item rules) might help it.
@@ -32,8 +32,9 @@ section.
 9. **Header-field rules are Malaysian.** On Indonesian receipts nearly every
    receipt gets "date not found", and the gate rejects it for that.
 10. **Keywords live in code.** Move them to one YAML file per language.
-11. **Not measured:** E3 on CORD line items. (E4 and E5 on SROIE fields: 0.744
-    and 0.825, see evaluation/results/comparison.md.)
+11. **Not measured:** E3's fields on SROIE with the line-item prompt; its
+    fields-only numbers are those in e3.yaml. (E3's line items on CORD:
+    reports/cord_e3_line_items.md.)
 12. **Line items are measured on CORD only.** No pilot set of receipts from
     another country.
 13. **Only the first page of a PDF is read.**
