@@ -16,10 +16,9 @@ cp .env.example .env              # add OPENAI_API_KEY for the high-accuracy mod
 docker compose up --build -d      # UI on http://localhost:8501, API on :8000
 ```
 
-The private mode uses E5 once an Ollama server with `qwen3-vl:2b-instruct` is
-reachable: either `docker compose --profile local up -d` (CPU), or Ollama on the
-host with `OLLAMA_HOST=http://host.docker.internal:11434` in `.env` (GPU, see
-[docs/local-runs.md](docs/local-runs.md)).
+On first opening, the UI asks how the private mode's local model should run
+and downloads it (about 2 GB, once) into the Ollama server. Until then the
+private mode runs OCR and rules (E2). See [Private mode on a GPU](#private-mode-on-a-gpu).
 
 1. Pick a mode. **High accuracy** sends the image to OpenAI (0.797 field accuracy,
    $0.31 per 1,000 receipts). **Private** runs on the server and nothing leaves it
@@ -41,6 +40,25 @@ host with `OLLAMA_HOST=http://host.docker.internal:11434` in `.env` (GPU, see
 The modes are defined in [profiles.yaml](profiles.yaml); the numbers next to them
 are read from the evaluation reports. Under *Advanced* any engine (e1 ... e5) can be
 chosen directly, and the providers not built yet are listed as planned.
+
+## Private mode on a GPU
+
+The local model runs wherever the Ollama server runs. `docker compose up` starts
+one on the CPU: nothing to install, about 25 to 35 s per receipt on a laptop.
+**The GPU is used only when Ollama runs where it can reach the GPU:**
+
+- **NVIDIA GPU:** needs a recent NVIDIA driver with CUDA (`nvidia-smi` should
+  list the card); on Linux also the NVIDIA Container Toolkit. Then
+  `docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d`.
+- **Intel or AMD GPU:** Docker cannot use these. Install Ollama on the host
+  (ollama.com); for an Intel integrated GPU set `OLLAMA_IGPU_ENABLE=1` and
+  restart Ollama. Put `OLLAMA_HOST=http://host.docker.internal:11434` in `.env`
+  and run `docker compose up -d`.
+
+How much faster: on the development laptop's Intel Arc 130T integrated GPU, 12 s
+per receipt against 33 s on its CPU, about 2.8 times (21 s when it also reads the
+line items). A dedicated NVIDIA card should be faster still; not measured. The
+UI's sidebar says whether the model ran on the GPU or the CPU.
 
 ## Results (400 held-out SROIE receipts)
 

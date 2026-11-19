@@ -5,6 +5,7 @@ can run here depends on this machine: the OpenAI engine needs a key, the
 local-model engines need an Ollama server.
 """
 
+import json
 import os
 import time
 import urllib.request
@@ -35,35 +36,51 @@ def measured(config: dict) -> dict | None:
     return config.get("measured")
 
 
-def ollama_reachable() -> bool:
-    return _ollama_reachable(int(time.time() // 30))
-
-
-@lru_cache(maxsize=4)
-def _ollama_reachable(_period: int) -> bool:
-    """Checked at most once every 30 seconds (the argument is the time slot)."""
-
+def ollama_host() -> str:
     host = os.getenv("OLLAMA_HOST", "http://ollama:11434").rstrip("/")
     # On Windows "localhost" tries IPv6 first and waits about 2 s before
     # falling back to IPv4, longer than the whole check may take.
-    host = host.replace("://localhost:", "://127.0.0.1:")
+    return host.replace("://localhost:", "://127.0.0.1:")
 
-    def ping() -> bool:
+
+def ollama_models() -> set[str] | None:
+    """The models the Ollama server has, or None when it cannot be reached."""
+
+    return _ollama_models(int(time.time() // 30))
+
+
+@lru_cache(maxsize=4)
+def _ollama_models(_period: int) -> set[str] | None:
+    """Checked at most once every 30 seconds (the argument is the time slot)."""
+
+    url = f"{ollama_host()}/api/tags"
+
+    def ask() -> set[str] | None:
         try:
-            with urllib.request.urlopen(f"{host}/api/tags", timeout=1.5):
-                return True
-        except OSError:
-            return False
+            with urllib.request.urlopen(url, timeout=1.5) as response:
+                return {model["name"] for model in json.load(response).get("models", [])}
+        except (OSError, ValueError):
+            return None
 
     # The urlopen timeout does not cover the name lookup, which can take
     # seconds when no "ollama" container exists; cap the whole check.
     pool = ThreadPoolExecutor(max_workers=1)
     try:
-        return pool.submit(ping).result(timeout=1.5)
+        return pool.submit(ask).result(timeout=1.5)
     except TimeoutError:
-        return False
+        return None
     finally:
         pool.shutdown(wait=False)
+
+
+def forget_ollama() -> None:
+    """Check the server again on the next call, e.g. after a model was downloaded."""
+
+    _ollama_models.cache_clear()
+
+
+def has_model(models: set[str], model: str) -> bool:
+    return model in models or f"{model}:latest" in models
 
 
 def unavailable_reason(config: dict) -> str | None:
@@ -71,8 +88,13 @@ def unavailable_reason(config: dict) -> str | None:
 
     if config["fields"] in CLOUD_EXTRACTORS and not os.getenv("OPENAI_API_KEY"):
         return "OPENAI_API_KEY is not set on the server"
-    if config["fields"] in OLLAMA_EXTRACTORS and not ollama_reachable():
-        return "The local model server (Ollama) is not running"
+    if config["fields"] in OLLAMA_EXTRACTORS:
+        models = ollama_models()
+        if models is None:
+            return "The local model server (Ollama) is not running"
+        model = config.get("fields_options", {}).get("model")
+        if model and not has_model(models, model):
+            return f"The local model {model} is not downloaded yet"
 
     return None
 

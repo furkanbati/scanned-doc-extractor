@@ -13,6 +13,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from PIL import Image, UnidentifiedImageError
 
 import catalogue
+import local_model
 from extractor.gate import decide
 from extractor.locate import locate_fields
 from extractor.pipeline import Pipeline, build_pipeline, load_engine
@@ -95,6 +96,23 @@ def profiles() -> dict:
 @app.get("/methods")
 def methods() -> dict:
     return {"methods": catalogue.engines()}
+
+
+@app.get("/local-model")
+def local_model_status() -> dict:
+    """The private mode's local model: server running, model downloaded, on the GPU."""
+
+    return local_model.status()
+
+
+@app.post("/local-model/download")
+def local_model_download() -> dict:
+    """Download the private mode's model into the Ollama server, in the background."""
+
+    if catalogue.ollama_models() is None:
+        raise HTTPException(status_code=503, detail="The local model server (Ollama) is not running")
+
+    return local_model.start_download(local_model.private_model())
 
 
 @app.post("/extract")
