@@ -14,6 +14,11 @@ the ones E5's gate rejects too go to a person. Needs the e2e and e5 results
 of the split; writes hybrid-<split>.json.
 
     python -m evaluation.cord_gate --hybrid --split validation
+    python -m evaluation.cord_gate --hybrid --second e3 --split validation
+
+With --second e3 the second step is E3 (OpenAI) instead of E5; the summary
+adds E3's cost per receipt, paid only on the receipts sent to it, and goes to
+hybrid-e3-<split>.json.
 
 CORD labels only line items, and E2's field rules (company, date, address)
 were written for SROIE's Malaysian receipts, so on CORD the gate sees the line
@@ -112,8 +117,9 @@ def _records(output: Path, mode: str, split: str) -> dict[str, dict]:
         return {record["id"]: record for line in file if (record := json.loads(line))}
 
 
-def chain_summary(first: dict[str, dict], second: dict[str, dict], strict: bool, seconds: tuple[float, float]) -> dict:
-    """E2, then E5 for what E2's gate rejects, then a person."""
+def chain_summary(first: dict[str, dict], second: dict[str, dict], strict: bool, seconds: tuple[float, float],
+                  name: str = "e5", usd: float | None = None) -> dict:
+    """E2, then the second engine (E5 or E3) for what E2's gate rejects, then a person."""
 
     total = len(first)
     by_first = by_second = wrong_first = wrong_second = 0
@@ -136,56 +142,67 @@ def chain_summary(first: dict[str, dict], second: dict[str, dict], strict: bool,
         "receipts": total,
         "accepted_by_e2": by_first,
         "wrong_by_e2": wrong_first,
-        "sent_to_e5": routed,
-        "accepted_by_e5": by_second,
-        "wrong_by_e5": wrong_second,
+        f"sent_to_{name}": routed,
+        f"accepted_by_{name}": by_second,
+        f"wrong_by_{name}": wrong_second,
         "to_person": total - accepted,
         "accepted_rate": accepted / total,
         "accepted_error_rate": wrong / accepted if accepted else 0.0,
         "accepted_error_rate_95": [low, high],
-        # E2 on every receipt, E5 on the ones sent to it.
+        # E2 on every receipt, the second engine on the ones sent to it.
         "seconds_per_receipt": seconds[0] + seconds[1] * routed / total,
+        **({"usd_per_receipt": usd * routed / total} if usd is not None else {}),
     }
 
 
-def run_hybrid(split: str, output: Path) -> dict:
-    first, second = _records(output, "e2e", split), _records(output, "e5", split)
+def hybrid_name(second: str, split: str) -> str:
+    return f"hybrid-{split}.json" if second == "e5" else f"hybrid-{second}-{split}.json"
+
+
+def run_hybrid(split: str, output: Path, second_mode: str = "e5") -> dict:
+    first, second = _records(output, "e2e", split), _records(output, second_mode, split)
     missing = set(first) - set(second)
     if missing:
-        raise SystemExit(f"e5 results lack {len(missing)} receipts of {split}")
+        raise SystemExit(f"{second_mode} results lack {len(missing)} receipts of {split}")
 
-    seconds = tuple(
-        json.loads((output / f"{mode}-{split}.json").read_text(encoding="utf-8"))["seconds_per_receipt"]
-        for mode in ("e2e", "e5")
-    )
+    summaries = [json.loads((output / f"{mode}-{split}.json").read_text(encoding="utf-8")) for mode in ("e2e", second_mode)]
+    seconds = (summaries[0]["seconds_per_receipt"], summaries[1]["seconds_per_receipt"])
+    usd = summaries[1].get("usd_per_receipt")
     summary = {
         "split": split,
-        **{level: chain_summary(first, second, strict, seconds) for level, strict in LEVELS.items()},
+        "second": second_mode,
+        **{level: chain_summary(first, second, strict, seconds, second_mode, usd) for level, strict in LEVELS.items()},
     }
-    (output / f"hybrid-{split}.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    (output / hybrid_name(second_mode, split)).write_text(json.dumps(summary, indent=2), encoding="utf-8")
 
     return summary
 
 
-def hybrid_table(output: Path) -> str:
+def hybrid_table(output: Path, second: str = "e5") -> str:
+    big = second.upper()
+    paid = second == "e3"
     lines = [
-        "| Split | Gate | Receipts | Accepted by E2 | Sent to E5 | Accepted by E5 | To a person | Wrong among accepted (95% CI) | s/receipt |",
-        "|---|---|---|---|---|---|---|---|---|",
+        f"| Split | Gate | Receipts | Accepted by E2 | Sent to {big} | Accepted by {big} | To a person | "
+        "Wrong among accepted (95% CI) | s/receipt |" + (" USD per 1000 |" if paid else ""),
+        "|---|---|---|---|---|---|---|---|---|" + ("---|" if paid else ""),
     ]
     for split in SPLITS:
-        path = output / f"hybrid-{split}.json"
+        path = output / hybrid_name(second, split)
         if not path.is_file():
             continue
         summary = json.loads(path.read_text(encoding="utf-8"))
         for level in LEVELS:
             s = summary[level]
             low, high = s["accepted_error_rate_95"]
-            wrong = s["wrong_by_e2"] + s["wrong_by_e5"]
-            accepted = s["accepted_by_e2"] + s["accepted_by_e5"]
+            by, wrong_by, sent = s[f"accepted_by_{second}"], s[f"wrong_by_{second}"], s[f"sent_to_{second}"]
+            wrong = s["wrong_by_e2"] + wrong_by
+            accepted = s["accepted_by_e2"] + by
+            cost = f" ${s['usd_per_receipt'] * 1000:.3f} |" if "usd_per_receipt" in s else ""
             lines.append(
                 f"| {split} | {level} | {s['receipts']} | {s['accepted_by_e2']} ({s['wrong_by_e2']} wrong) | "
-                f"{s['sent_to_e5']} | {s['accepted_by_e5']} ({s['wrong_by_e5']} wrong) | {s['to_person']} | "
-                f"{wrong}/{accepted} = {s['accepted_error_rate']:.3f} ({low:.3f}-{high:.3f}) | {s['seconds_per_receipt']:.1f} |"
+                f"{sent} | {by} ({wrong_by} wrong) | {s['to_person']} | "
+                f"{wrong}/{accepted} = {s['accepted_error_rate']:.3f} ({low:.3f}-{high:.3f}) | "
+                f"{s['seconds_per_receipt']:.1f} |" + cost
             )
 
     return "\n".join(lines)
@@ -219,7 +236,8 @@ def main() -> None:
     parser.add_argument("--mode", choices=MODES)
     parser.add_argument("--split", choices=SPLITS)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
-    parser.add_argument("--hybrid", action="store_true", help="E2, then E5 for what E2's gate rejects")
+    parser.add_argument("--hybrid", action="store_true", help="E2, then E5 (or --second) for what E2's gate rejects")
+    parser.add_argument("--second", choices=("e5", "e3"), default="e5", help="the second engine of the chain")
     parser.add_argument("--table", action="store_true", help="print the saved results as a markdown table")
     args = parser.parse_args()
 
@@ -227,16 +245,20 @@ def main() -> None:
         print(results_table(args.output))
         print()
         print(hybrid_table(args.output))
+        print()
+        print(hybrid_table(args.output, "e3"))
         return
     if args.hybrid:
         if not args.split:
             parser.error("--hybrid needs --split")
-        summary = run_hybrid(args.split, args.output)
+        summary = run_hybrid(args.split, args.output, args.second)
+        name = args.second
         for level in LEVELS:
             s = summary[level]
             print(
-                f"hybrid/{args.split} {level}: E2 accepted {s['accepted_by_e2']}, E5 accepted {s['accepted_by_e5']} "
-                f"of {s['sent_to_e5']}, to a person {s['to_person']}, wrong among accepted {s['accepted_error_rate']:.3f}"
+                f"hybrid/{name}/{args.split} {level}: E2 accepted {s['accepted_by_e2']}, {name.upper()} accepted "
+                f"{s[f'accepted_by_{name}']} of {s[f'sent_to_{name}']}, to a person {s['to_person']}, "
+                f"wrong among accepted {s['accepted_error_rate']:.3f}"
             )
         return
     if not (args.mode and args.split):
