@@ -1,0 +1,51 @@
+{
+  "mode": "e5",
+  "split": "validation",
+  "standard": {
+    "receipts": 100,
+    "accepted": 43,
+    "accepted_rate": 0.43,
+    "accepted_wrong": 1,
+    "accepted_error_rate": 0.023255813953488372,
+    "accepted_error_rate_95": [
+      0.004116981177419918,
+      0.12059267861216882
+    ],
+    "right_accepted_share": 0.5384615384615384,
+    "routed": 57,
+    "routed_rate": 0.57,
+    "e3_usd_per_1000": 0.17721299999999998,
+    "reasons": {
+      "line items: expected total N, found N": 31,
+      "line items: add-on lines were added to their item": 18,
+      "line items: items add up to N, subtotal is N": 17,
+      "line items: a free (N) line may be an item or a modifier": 11,
+      "line items: the model's answer is not JSON": 2,
+      "line items: no items": 2
+    }
+  },
+  "strict": {
+    "receipts": 100,
+    "accepted": 39,
+    "accepted_rate": 0.39,
+    "accepted_wrong": 0,
+    "accepted_error_rate": 0.0,
+    "accepted_error_rate_95": [
+      0.0,
+      0.08966985360023902
+    ],
+    "right_accepted_share": 0.5,
+    "routed": 61,
+    "routed_rate": 0.61,
+    "e3_usd_per_1000": 0.189649,
+    "reasons": {
+      "line items: expected total N, found N": 31,
+      "line items: add-on lines were added to their item": 18,
+      "line items: items add up to N, subtotal is N": 17,
+      "line items: a free (N) line may be an item or a modifier": 11,
+      "line items: '...' costs under a quarter of the item above": 9,
+      "line items: the model's answer is not JSON": 2,
+      "line items: no items": 2
+    }
+  }
+}

@@ -1,10 +1,13 @@
 from dataclasses import dataclass
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from PIL import Image
 
 from extractor.ocr.base import OcrLine
 from extractor.schema import Fields
+
+if TYPE_CHECKING:
+    from extractor.fields.line_items import LineItemResult
 
 
 @dataclass(frozen=True)
@@ -19,6 +22,8 @@ class Usage:
 class Extraction:
     fields: Fields
     usage: Usage | None = None
+    # Set by an extractor that reads line items itself (a model asked for them).
+    line_items: "LineItemResult | None" = None
 
 
 class FieldExtractor(Protocol):

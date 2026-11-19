@@ -146,3 +146,25 @@ def test_run_writes_the_summary_and_the_table(tmp_path):
 def test_run_without_receipts_says_what_to_run(tmp_path):
     with pytest.raises(SystemExit, match="cord_eval"):
         run("e2e", "validation", tmp_path)
+
+
+def test_the_chain_sends_only_what_e2_rejects_to_e5(tmp_path):
+    from evaluation.cord_gate import hybrid_table, run_hybrid
+
+    e2 = {"a": record(GOOD, True), "b": record(line_items([item("CAKE", "9000")], ["no total"]), True),
+          "c": record(line_items([], ["no items"]), True)}
+    e5 = {"a": record(line_items([]), False),  # never asked: E2 accepted it
+          "b": record(GOOD, False), "c": record(line_items([], ["no items"]), True)}
+    for mode, records in (("e2e", e2), ("e5", e5)):
+        with (tmp_path / f"{mode}-validation.receipts.jsonl").open("w", encoding="utf-8") as file:
+            for receipt_id, entry in records.items():
+                file.write(json.dumps({"id": receipt_id, **entry}) + "\n")
+        (tmp_path / f"{mode}-validation.json").write_text(json.dumps({"seconds_per_receipt": 2.0 if mode == "e2e" else 30.0}))
+
+    summary = run_hybrid("validation", tmp_path)["standard"]
+
+    assert (summary["accepted_by_e2"], summary["sent_to_e5"], summary["accepted_by_e5"], summary["to_person"]) == (1, 2, 1, 1)
+    assert summary["wrong_by_e5"] == 1
+    assert summary["accepted_error_rate"] == 0.5
+    assert summary["seconds_per_receipt"] == 2.0 + 30.0 * 2 / 3
+    assert "| validation | standard | 3 | 1 (0 wrong) | 2 | 1 (1 wrong) | 1 |" in hybrid_table(tmp_path)
