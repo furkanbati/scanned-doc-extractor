@@ -1,0 +1,16 @@
+# Runs the local model on an NVIDIA GPU:
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+#
+# Needs an NVIDIA GPU with a recent driver (CUDA); `nvidia-smi` should list it.
+# On Windows, Docker Desktop passes the GPU through WSL 2; on Linux, install the
+# NVIDIA Container Toolkit. Intel and AMD GPUs cannot be used from Docker here:
+# install Ollama on the host instead (README, "Private mode on a GPU").
+services:
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

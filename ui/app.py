@@ -35,6 +35,115 @@ def load_catalogue() -> tuple[dict, dict]:
     return profiles.json(), engines.json()["methods"]
 
 
+def load_local() -> dict | None:
+    """The private mode's local model: server, download, GPU (api.py /local-model)."""
+
+    try:
+        response = requests.get(f"{API_URL}/local-model", timeout=10)
+        response.raise_for_status()
+    except requests.RequestException:
+        return None
+
+    return response.json()
+
+
+CPU_SPEED = ("On a laptop CPU it takes about 25 to 35 s per receipt "
+             "(measured: 26 s in Docker with 8 threads).")
+GPU_SPEED = ("Measured on a laptop's Intel Arc 130T integrated GPU: 12 s per receipt against 33 s on "
+             "its CPU, about 2.8 times faster (21 s when it also reads the line items). A dedicated "
+             "NVIDIA card should be faster still; that was not measured.")
+GPU_STEPS = """**The GPU is used only when the Ollama server runs where it can reach the GPU.**
+The model is the same either way; only where Ollama runs changes.
+
+- **NVIDIA GPU:** needs a recent NVIDIA driver with CUDA; `nvidia-smi` should list the card.
+  Restart with `docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d`
+  (on Linux also install the NVIDIA Container Toolkit).
+- **Intel or AMD GPU:** Docker cannot use these. Install Ollama on this computer
+  (ollama.com); for an Intel integrated GPU set the environment variable
+  `OLLAMA_IGPU_ENABLE=1` and restart Ollama. Then add
+  `OLLAMA_HOST=http://host.docker.internal:11434` to `.env` and run `docker compose up -d`.
+- **No such GPU, or no CUDA driver:** choose the CPU; nothing else to install.
+"""
+
+
+def model_download(local: dict) -> None:
+    """Start the download, show its progress, or say what is missing."""
+
+    if not local["running"]:
+        st.warning(f"No Ollama server answers at {local['host']}. The bundled one starts with "
+                   "`docker compose up -d ollama`; Ollama on this computer must be running.")
+        if st.button("Check again"):
+            st.rerun()
+        return
+
+    state = local["download"]
+    if local["downloaded"]:
+        st.success(f"{local['model']} is ready at {local['host']}. The private mode runs E5.")
+        return
+
+    if state["status"] == "running":
+        download_progress()
+        return
+    if state["status"] == "failed":
+        st.error(f"The download failed: {state['error']}")
+
+    st.caption(f"The model goes to the Ollama server at {local['host']}.")
+    if st.button(f"Download {local['model']} (about 2 GB, once)", type="primary"):
+        try:
+            requests.post(f"{API_URL}/local-model/download", timeout=30).raise_for_status()
+        except requests.RequestException as error:
+            st.error(f"Could not start the download: {error}")
+            return
+        st.rerun()
+
+
+@st.fragment(run_every=2)
+def download_progress() -> None:
+    """Redrawn every 2 s on its own, so the rest of the page stays usable."""
+
+    local = load_local()
+    state = local["download"] if local else {"status": "failed"}
+    if state["status"] != "running":
+        st.rerun(scope="app")
+
+    share = state["completed"] / state["total"] if state["total"] else 0.0
+    st.progress(share, text=f"Downloading {local['model']}: "
+                            f"{state['completed'] / 1e9:.2f} of {state['total'] / 1e9:.2f} GB so far")
+    st.caption("Ollama reports the size of each part as it starts, so the total grows at first. "
+               "You can use the page meanwhile.")
+
+
+def setup_panel(local: dict) -> None:
+    """Asks once per session how the private mode should run, and sets it up."""
+
+    with st.container(border=True):
+        st.subheader("Set up the private mode")
+        st.write("The private mode can read documents with a local vision model (E5: 82% of fields "
+                 "right on the test receipts) without sending them anywhere. Until it is set up it "
+                 "runs OCR and rules (E2: 63%).")
+        way = st.radio(
+            "How should the local model run?",
+            ["gpu", "cpu", "skip"],
+            format_func={"gpu": "On this computer's GPU (faster, needs Ollama where it can reach the GPU)",
+                         "cpu": "On the CPU, in Docker (nothing to install)",
+                         "skip": "Not now: keep OCR and rules"}.get,
+            key="setup_way",
+        )
+        if way == "skip":
+            st.caption("You can set it up later from the sidebar.")
+            if st.button("Close"):
+                st.session_state.setup_closed = True
+                st.rerun()
+            return
+
+        if way == "gpu":
+            st.markdown(GPU_STEPS)
+            st.caption(GPU_SPEED)
+        else:
+            st.caption(CPU_SPEED)
+        model_download(local)
+
+
 def extract(data: bytes, filename: str, choice: tuple[str, str]) -> dict:
     kind, name = choice
     response = requests.post(
@@ -116,6 +225,18 @@ except requests.RequestException as error:
 
 profiles = catalogue["profiles"]
 names = list(profiles)
+local = load_local()
+private = profiles.get("private")
+# The private mode still runs its fallback because the local model is not set up.
+needs_setup = bool(local and private and private.get("fallback_reason"))
+if needs_setup and local["downloaded"] and not st.session_state.get("refreshed_after_download"):
+    # Just downloaded: the cached modes still name the fallback.
+    st.session_state.refreshed_after_download = True
+    st.session_state.just_ready = True
+    load_catalogue.clear()
+    st.rerun()
+if st.session_state.pop("just_ready", False) and not needs_setup:
+    st.toast("The local model is ready: the private mode now runs E5.")
 
 with st.sidebar:
     st.header("Mode")
@@ -130,6 +251,12 @@ with st.sidebar:
     st.write(chosen["description"])
     if chosen.get("fallback_reason"):
         st.info(f"Running {chosen['method'].upper()} for now. {chosen['fallback_reason']}.")
+    if profile == "private" and needs_setup and st.session_state.get("setup_closed") and st.button("Set up the local model"):
+        st.session_state.setup_closed = False
+        st.rerun()
+    if profile == "private" and local and local["downloaded"] and not chosen.get("fallback_reason"):
+        where = {True: "on the GPU", False: "on the CPU"}.get(local["on_gpu"], "GPU or CPU shows after the first document")
+        st.caption(f"Local model {local['model']} · {where}")
     st.caption(describe(chosen["measured"]))
     choice = ("profile", profile)
     available, reason, leaves = chosen["available"], chosen["unavailable_reason"], chosen["leaves_machine"]
@@ -160,6 +287,11 @@ with st.sidebar:
         st.warning("Documents are sent to a cloud API (OpenAI) in this mode.")
     if not available:
         st.error(f"Not available on this server: {reason}")
+
+# ---------------------------------------------------------------- local model setup
+
+if needs_setup and not st.session_state.get("setup_closed"):
+    setup_panel(local)
 
 # ---------------------------------------------------------------- upload and run
 

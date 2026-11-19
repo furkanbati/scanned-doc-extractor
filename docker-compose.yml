@@ -48,12 +48,11 @@ services:
     volumes:
       - .:/app
 
-  # Local models for e4 and e5: docker compose --profile local up -d
+  # Local models for the private mode (e5) and e4. Starts empty: the UI offers
+  # to download the model. Runs on the CPU; for an NVIDIA GPU add
+  # docker-compose.gpu.yml, for other GPUs use Ollama on the host (README).
   ollama:
     image: ollama/ollama
-
-    profiles:
-      - local
 
     volumes:
       - ollama:/root/.ollama
