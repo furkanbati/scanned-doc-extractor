@@ -94,7 +94,7 @@ def test_methods_list_every_engine_with_availability(client):
     assert engines["e2"]["available"] is True
     assert engines["e4"]["available"] is False  # no Ollama in the test
     assert engines["e3"]["model"] == "gpt-6-luna"
-    assert engines["e4"]["measured"] is None
+    assert engines["e4"]["measured"]["field_accuracy"] == 0.7438
 
 
 def test_extract_with_a_mode(client):

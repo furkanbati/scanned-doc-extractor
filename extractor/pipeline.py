@@ -68,9 +68,19 @@ class Pipeline:
             lines = self.ocr.read(image)
 
         extraction = self.extractor.extract(image, lines)
-        items = extract_line_items(segments if segments is not None else lines) if self.line_items else None
+        if extraction.line_items is not None:
+            # The extractor (a model) read them itself.
+            items = extraction.line_items
+        elif self.line_items:
+            items = extract_line_items(segments if segments is not None else lines)
+        else:
+            items = None
 
         return PipelineResult(fields=extraction.fields, lines=lines, usage=extraction.usage, line_items=items)
+
+
+# Field extractors that can be asked for line items (line_items: model).
+MODEL_LINE_ITEMS = {"local_vision"}
 
 
 def build_ocr(name: str, options: dict | None = None) -> OcrEngine | None:
@@ -124,14 +134,22 @@ def build_pipeline(config: dict, doctype: DocumentType) -> Pipeline:
         raise ValueError(f"Unknown preprocessing {preprocess!r}")
 
     line_items = config.get("line_items", "none")
-    if line_items not in ("none", "rules"):
+    if line_items not in ("none", "rules", "model"):
         raise ValueError(f"Unknown line-item extractor {line_items!r}")
+    if line_items == "model" and config["fields"] not in MODEL_LINE_ITEMS:
+        raise ValueError(f"{config['fields']} cannot read line items")
+
+    # Read only when the document type has them and the engine can read them.
+    wanted = doctype.line_items and line_items != "none"
+    options = dict(config.get("fields_options") or {})
+    if wanted and line_items == "model":
+        options["line_items"] = True
 
     return Pipeline(
         ocr=build_ocr(config["ocr"], config.get("ocr_options")),
-        extractor=build_extractor(config["fields"], doctype, config.get("fields_options")),
-        # Read only when the document type has them and the engine can read them.
-        line_items=doctype.line_items and line_items == "rules",
+        extractor=build_extractor(config["fields"], doctype, options),
+        # "rules": from the OCR boxes; "model": the extractor returns them.
+        line_items=wanted and line_items == "rules",
     )
 
 

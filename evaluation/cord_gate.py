@@ -8,6 +8,13 @@ Reads the per-receipt results cord_eval wrote (<mode>-<split>.receipts.jsonl)
 and writes gate-<mode>-<split>.json next to them. No model is called: a
 receipt the gate rejects is counted as "goes to a model or a person".
 
+With --hybrid, the two engines run as a chain: E2 reads every receipt; the
+ones its gate rejects go to E5 (a local vision model, asked for the items);
+the ones E5's gate rejects too go to a person. Needs the e2e and e5 results
+of the split; writes hybrid-<split>.json.
+
+    python -m evaluation.cord_gate --hybrid --split validation
+
 CORD labels only line items, and E2's field rules (company, date, address)
 were written for SROIE's Malaysian receipts, so on CORD the gate sees the line
 items only: no field review notes.
@@ -96,6 +103,94 @@ def run(mode: str, split: str, output: Path) -> dict:
     return summary
 
 
+def _records(output: Path, mode: str, split: str) -> dict[str, dict]:
+    path = output / f"{mode}-{split}.receipts.jsonl"
+    if not path.is_file():
+        raise SystemExit(f"{path} is missing: run python -m evaluation.cord_eval --mode {mode} --split {split}")
+
+    with path.open(encoding="utf-8") as file:
+        return {record["id"]: record for line in file if (record := json.loads(line))}
+
+
+def chain_summary(first: dict[str, dict], second: dict[str, dict], strict: bool, seconds: tuple[float, float]) -> dict:
+    """E2, then E5 for what E2's gate rejects, then a person."""
+
+    total = len(first)
+    by_first = by_second = wrong_first = wrong_second = 0
+
+    for receipt_id, record in first.items():
+        if decide(record["prediction"], strict=strict).accepted:
+            by_first += 1
+            wrong_first += record["correct"] != record["required"]
+            continue
+        fallback = second[receipt_id]
+        if decide(fallback["prediction"], strict=strict).accepted:
+            by_second += 1
+            wrong_second += fallback["correct"] != fallback["required"]
+
+    accepted, wrong = by_first + by_second, wrong_first + wrong_second
+    low, high = wilson(wrong, accepted)
+    routed = total - by_first
+
+    return {
+        "receipts": total,
+        "accepted_by_e2": by_first,
+        "wrong_by_e2": wrong_first,
+        "sent_to_e5": routed,
+        "accepted_by_e5": by_second,
+        "wrong_by_e5": wrong_second,
+        "to_person": total - accepted,
+        "accepted_rate": accepted / total,
+        "accepted_error_rate": wrong / accepted if accepted else 0.0,
+        "accepted_error_rate_95": [low, high],
+        # E2 on every receipt, E5 on the ones sent to it.
+        "seconds_per_receipt": seconds[0] + seconds[1] * routed / total,
+    }
+
+
+def run_hybrid(split: str, output: Path) -> dict:
+    first, second = _records(output, "e2e", split), _records(output, "e5", split)
+    missing = set(first) - set(second)
+    if missing:
+        raise SystemExit(f"e5 results lack {len(missing)} receipts of {split}")
+
+    seconds = tuple(
+        json.loads((output / f"{mode}-{split}.json").read_text(encoding="utf-8"))["seconds_per_receipt"]
+        for mode in ("e2e", "e5")
+    )
+    summary = {
+        "split": split,
+        **{level: chain_summary(first, second, strict, seconds) for level, strict in LEVELS.items()},
+    }
+    (output / f"hybrid-{split}.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+
+    return summary
+
+
+def hybrid_table(output: Path) -> str:
+    lines = [
+        "| Split | Gate | Receipts | Accepted by E2 | Sent to E5 | Accepted by E5 | To a person | Wrong among accepted (95% CI) | s/receipt |",
+        "|---|---|---|---|---|---|---|---|---|",
+    ]
+    for split in SPLITS:
+        path = output / f"hybrid-{split}.json"
+        if not path.is_file():
+            continue
+        summary = json.loads(path.read_text(encoding="utf-8"))
+        for level in LEVELS:
+            s = summary[level]
+            low, high = s["accepted_error_rate_95"]
+            wrong = s["wrong_by_e2"] + s["wrong_by_e5"]
+            accepted = s["accepted_by_e2"] + s["accepted_by_e5"]
+            lines.append(
+                f"| {split} | {level} | {s['receipts']} | {s['accepted_by_e2']} ({s['wrong_by_e2']} wrong) | "
+                f"{s['sent_to_e5']} | {s['accepted_by_e5']} ({s['wrong_by_e5']} wrong) | {s['to_person']} | "
+                f"{wrong}/{accepted} = {s['accepted_error_rate']:.3f} ({low:.3f}-{high:.3f}) | {s['seconds_per_receipt']:.1f} |"
+            )
+
+    return "\n".join(lines)
+
+
 def results_table(output: Path) -> str:
     lines = [
         "| Mode | Split | Gate | Receipts | Accepted | Wrong among accepted (95% CI) | Right receipts accepted | To model or person | E3 cost / 1000 |",
@@ -124,11 +219,25 @@ def main() -> None:
     parser.add_argument("--mode", choices=MODES)
     parser.add_argument("--split", choices=SPLITS)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument("--hybrid", action="store_true", help="E2, then E5 for what E2's gate rejects")
     parser.add_argument("--table", action="store_true", help="print the saved results as a markdown table")
     args = parser.parse_args()
 
     if args.table:
         print(results_table(args.output))
+        print()
+        print(hybrid_table(args.output))
+        return
+    if args.hybrid:
+        if not args.split:
+            parser.error("--hybrid needs --split")
+        summary = run_hybrid(args.split, args.output)
+        for level in LEVELS:
+            s = summary[level]
+            print(
+                f"hybrid/{args.split} {level}: E2 accepted {s['accepted_by_e2']}, E5 accepted {s['accepted_by_e5']} "
+                f"of {s['sent_to_e5']}, to a person {s['to_person']}, wrong among accepted {s['accepted_error_rate']:.3f}"
+            )
         return
     if not (args.mode and args.split):
         parser.error("--mode and --split are required (or --table)")

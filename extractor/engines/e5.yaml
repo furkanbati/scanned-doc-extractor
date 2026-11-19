@@ -5,6 +5,16 @@ preprocess: none
 ocr: none
 fields: local_vision
 fields_options:
-  model: qwen3-vl:2b
+  model: qwen3-vl:2b-instruct
   think: false
   max_side: 1600
+  # Room for the items as well as the fields.
+  max_tokens: 2048
+# The model also reads the purchased items and the sums below them.
+line_items: model
+measured:
+  receipts: 400
+  field_accuracy: 0.8253
+  seconds_per_document: 20.97
+  usd_per_1000: 0
+  date: 2026-11-19
