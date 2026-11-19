@@ -2,7 +2,8 @@
 # extractor/engines; the accuracy, speed and cost shown next to it come from
 # that engine's `measured` block.
 #
-# The first available mode in `order` is the default.
+# The first available mode in `order` is the default. A mode with a `fallback`
+# runs that engine instead while its own engine cannot run here.
 
 order: [accurate, private]
 
@@ -16,10 +17,11 @@ profiles:
   private:
     label: Private
     description: >-
-      Runs on this server; the image never leaves it. Good on dates and
-      totals, weaker on company names and addresses.
-    # Switch to e4 (local LLM) once it is measured on the 400 test receipts.
-    method: e2
+      Runs on this server; the image never leaves it. A local vision model
+      reads the fields and the purchased items. Slower than the cloud.
+    method: e5
+    # Needs Ollama; without it the mode runs OCR and rules.
+    fallback: e2
 
 # Shown greyed out in the advanced panel, so it is clear what can be added.
 planned:

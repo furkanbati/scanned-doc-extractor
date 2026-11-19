@@ -16,9 +16,16 @@ cp .env.example .env              # add OPENAI_API_KEY for the high-accuracy mod
 docker compose up --build -d      # UI on http://localhost:8501, API on :8000
 ```
 
+The private mode uses E5 once an Ollama server with `qwen3-vl:2b-instruct` is
+reachable: either `docker compose --profile local up -d` (CPU), or Ollama on the
+host with `OLLAMA_HOST=http://host.docker.internal:11434` in `.env` (GPU, see
+[docs/local-runs.md](docs/local-runs.md)).
+
 1. Pick a mode. **High accuracy** sends the image to OpenAI (0.797 field accuracy,
    $0.31 per 1,000 receipts). **Private** runs on the server and nothing leaves it
-   (0.631, free). Without an OpenAI key only the private mode is offered.
+   (free): a local vision model, E5 (0.825, about 21 s per receipt on the GPU).
+   While no Ollama server is reachable it runs OCR and rules, E2 (0.631, 3.6 s),
+   and says so. Without an OpenAI key only the private mode is offered.
 2. Upload one or more receipt images or PDFs (first page is read, 10 MB each).
    The button shows the estimated cost before anything is sent.
 3. Check the table. The *check* column flags fields that were not found, dates
