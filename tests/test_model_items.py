@@ -115,7 +115,7 @@ def test_local_vision_without_line_items_is_unchanged():
     extraction = LocalVisionExtractor(RECEIPT, client=client).extract(Image.new("RGB", (40, 20)), [])
 
     assert client.calls[0]["format"] == json_schema(RECEIPT)
-    assert "num_thread" not in client.calls[0]["options"]
+    assert client.calls[0]["options"]["num_thread"] >= 1
     assert extraction.line_items is None
 
 
@@ -139,3 +139,15 @@ def test_line_items_by_model_need_a_model_that_can_read_them():
 
     with pytest.raises(ValueError, match="cannot read line items"):
         build_pipeline(config, RECEIPT)
+
+
+def test_ollama_gets_half_the_logical_cores_by_default(monkeypatch):
+    from extractor.fields import local_vision
+
+    monkeypatch.setattr(local_vision.os, "cpu_count", lambda: 14)
+    assert local_vision.default_threads() == 7
+    monkeypatch.setattr(local_vision.os, "cpu_count", lambda: None)
+    assert local_vision.default_threads() == 1
+    monkeypatch.setattr(local_vision.os, "cpu_count", lambda: 14)
+    assert local_vision.LocalVisionExtractor(RECEIPT, client=object()).threads == 7
+    assert local_vision.LocalVisionExtractor(RECEIPT, threads=4, client=object()).threads == 4
