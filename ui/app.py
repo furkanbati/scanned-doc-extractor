@@ -20,7 +20,7 @@ PDF_DPI = 200  # the API renders PDFs at the same scale, so boxes line up
 
 # One colour per field position; fields beyond the palette reuse it.
 COLOURS = ["#2563eb", "#16a34a", "#d97706", "#dc2626", "#7c3aed", "#0891b2"]
-BOOKKEEPING = ["file", "check", "seconds", "usd"]
+BOOKKEEPING = ["file", "check", "engine", "seconds", "usd"]
 
 st.set_page_config(page_title="Scanned Document Extractor", page_icon="🧾", layout="wide")
 
@@ -442,6 +442,14 @@ with right:
         if gate is not None and gate["accepted"]:
             st.success("Every check passed: accepted without a look.")
 
+    chain = result.get("chain", [])
+    if len(chain) > 1:
+        answered = [step for step in chain if not step["error"]][-1]
+        steps = [f"{step['method']} failed ({step['error']})" if step["error"]
+                 else f"{step['method']} sent it on ({'; '.join(step['reasons']) or 'not checked'})"
+                 for step in chain if step is not answered]
+        last = f"{answered['method']} answered" + ("" if answered["accepted"] else ", but not every check passed")
+        st.caption("Engines tried: " + " → ".join(steps + [last]))
     facts = [f"{result['seconds']:.1f} s", f"engine {result['method']}"]
     if result["usd"] is not None:
         facts.append(f"${result['usd']:.5f}")
