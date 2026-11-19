@@ -77,7 +77,7 @@ without a price; E5 left them out, and every amount and the total are right.
 ## Reproduce
 
 ```bash
-docker compose --profile local up -d ollama   # publish port 11434 to reach it from the host
+docker compose up -d ollama   # publish port 11434 to reach it from the host
 OLLAMA_HOST=http://localhost:11434 python -m evaluation.cord_eval --mode e5 --split validation --threads 8
 python -m evaluation.cord_gate --mode e5 --split validation
 python -m evaluation.cord_gate --hybrid --split validation
