@@ -20,8 +20,8 @@ On first opening, the UI asks how the private mode's local model should run
 and downloads it (about 2 GB, once) into the Ollama server. Until then the
 private mode runs OCR and rules (E2). See [Private mode on a GPU](#private-mode-on-a-gpu).
 
-1. Pick a mode. **High accuracy** sends the image to OpenAI (0.797 field accuracy,
-   $0.31 per 1,000 receipts). **Private** runs on the server and nothing leaves it
+1. Pick a mode. **High accuracy** sends the image to OpenAI (0.801 field accuracy,
+   $0.51 per 1,000 receipts, line items included). **Private** runs on the server and nothing leaves it
    (free): a local vision model, E5 (0.825, about 21 s per receipt on the GPU).
    While no Ollama server is reachable it runs OCR and rules, E2 (0.631, 3.6 s),
    and says so. Without an OpenAI key only the private mode is offered.
@@ -29,7 +29,7 @@ private mode runs OCR and rules (E2). See [Private mode on a GPU](#private-mode-
    The button shows the estimated cost before anything is sent.
 3. Check the table. The *check* column flags fields that were not found, dates
    that are not dates and totals that are not amounts; edit any cell to correct it.
-4. In the private mode a second table lists every purchased item with its amount
+4. A second table lists every purchased item with its amount
    (experimental, see [Line items](#line-items-cord)); a receipt whose items,
    subtotal, tax and total do not add up says why in *check*.
 5. Download the tables, with your corrections, as Excel (line items on a second
@@ -66,7 +66,7 @@ UI's sidebar says whether the model ran on the GPU or the CPU.
 |---|---|---|---|---|---|---|
 | E1 Tesseract + rules (baseline) | 0.464 | 0.498 | 0.465 | 1.34 | 0 | no |
 | E2 RapidOCR (PP-OCRv6) + rules | 0.631 | 0.686 | 0.364 | 3.57 | 0 | no |
-| E3 OpenAI gpt-6-luna, image to JSON | 0.797 | 0.858 | - | 7.16 | 0.31 | yes |
+| E3 OpenAI gpt-6-luna, image to JSON | 0.801 | 0.863 | - | 11.7 | 0.51 | yes |
 | E4 RapidOCR + local LLM (qwen3.5:4b) | 0.744 | 0.827 | 0.364 | 10.3 (iGPU) | 0 | no |
 | E5 local vision model (qwen3-vl:2b-instruct) | **0.825** | **0.880** | - | 21.0 (iGPU) | 0 | no |
 
@@ -82,7 +82,8 @@ long. E5 also reads the line items in the same call, which its time includes.
 See [docs/local-runs.md](docs/local-runs.md).
 
 Measured on an Intel Core Ultra 5 226V; E1 to E3 on the CPU only. OpenAI prices as published on
-2026-10-31.
+2026-10-31. E3 also reads the line items since 2026-11-19 (fields only it was 0.797,
+7.2 s and $0.31); its time includes retries of OpenAI server errors during that run.
 
 ## What the numbers say
 
@@ -90,10 +91,10 @@ Measured on an Intel Core Ultra 5 226V; E1 to E3 on the CPU only. OpenAI prices 
   same rules, takes accuracy from 0.464 to 0.631 and date errors from 102 to 16.
 - **Rules cannot read layout.** Given the dataset's own error-free transcripts, the
   same rules reach only 0.704: the company and address need an understanding of
-  the receipt that a model brings (E3: 0.797).
+  the receipt that a model brings (E3: 0.801, E5: 0.825).
 - **Totals and dates are solved; names and addresses are not.** E3 gets the total
-  wrong on 9 of 400 receipts and the date on 10, the company on 99 and the address
-  on 206 (81 of those only in spacing).
+  wrong on 7 of 400 receipts and the date on 8, the company on 96 and the address
+  on 208 (83 of those only in spacing).
 - **The cloud model can invent text.** Where the print is faded it once wrote a
   plausible but wrong company name. Low-quality scans should go to a human check.
 
