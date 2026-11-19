@@ -151,3 +151,68 @@ def test_ollama_gets_half_the_logical_cores_by_default(monkeypatch):
     monkeypatch.setattr(local_vision.os, "cpu_count", lambda: 14)
     assert local_vision.LocalVisionExtractor(RECEIPT, client=object()).threads == 7
     assert local_vision.LocalVisionExtractor(RECEIPT, threads=4, client=object()).threads == 4
+
+
+class FakeCompletions:
+    def __init__(self, content):
+        self.content = content
+        self.requests = []
+
+    def create(self, **request):
+        self.requests.append(request)
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content=self.content))],
+            usage=SimpleNamespace(prompt_tokens=1200, completion_tokens=300),
+        )
+
+
+def openai_extractor(content, **options):
+    from extractor.fields.openai_vision import OpenAIVisionExtractor
+
+    completions = FakeCompletions(content)
+    client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
+
+    return OpenAIVisionExtractor(RECEIPT, client=client, **options), completions
+
+
+def test_openai_vision_asks_for_line_items_when_told():
+    extractor, completions = openai_extractor(answer([("TEA", None, "9,000", None)], total="9,000"), line_items=True)
+
+    extraction = extractor.extract(Image.new("RGB", (40, 20)), [])
+
+    request = completions.requests[0]
+    schema = request["response_format"]["json_schema"]["schema"]
+    assert "line_items" in schema["required"]
+    assert "add_ons" in request["messages"][0]["content"]
+    assert extraction.line_items.amounts == [Decimal(9000)]
+    assert extraction.usage.output_tokens == 300
+
+
+def test_openai_vision_without_line_items_is_unchanged():
+    extractor, completions = openai_extractor(json.dumps({"total": "9.00"}))
+
+    extraction = extractor.extract(Image.new("RGB", (40, 20)), [])
+
+    assert "line_items" not in completions.requests[0]["response_format"]["json_schema"]["schema"]["properties"]
+    assert extraction.line_items is None
+
+
+def test_the_line_item_schema_meets_openai_strict_mode():
+    """Strict mode wants every property required and no extra properties, at every level."""
+
+    def check(node):
+        if node.get("type") == "object":
+            assert node["additionalProperties"] is False
+            assert set(node["required"]) == set(node["properties"])
+        for child in node.get("properties", {}).values():
+            check(child)
+        if isinstance(node.get("items"), dict):
+            check(node["items"])
+
+    check(with_line_items(json_schema(RECEIPT)))
+
+
+def test_e3_can_be_asked_for_line_items():
+    config = {**load_engine("e3"), "line_items": "model"}
+
+    assert reads_line_items(config, RECEIPT)
