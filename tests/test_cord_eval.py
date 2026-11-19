@@ -40,3 +40,39 @@ def test_results_table(tmp_path):
 
     assert len(table) == 3
     assert table[2].startswith("| oracle | validation | 100 | 0.900 | 0.950 | 1.000 | 0.955 |")
+
+
+def test_model_answers_are_cached_with_their_tokens(tmp_path):
+    from types import SimpleNamespace
+
+    from evaluation.cord_eval import e5_answer
+    from extractor.fields.base import Usage
+
+    class FakeE3:
+        calls = 0
+
+        def respond(self, image):
+            self.calls += 1
+            return '{"line_items": null}', Usage(input_tokens=1000, output_tokens=200)
+
+    sample = SimpleNamespace(id="test-0001", image=lambda: None)
+    cache, path, engine = {}, tmp_path / "e3" / "test.jsonl", FakeE3()
+
+    content, _ = e5_answer(sample, cache, path, engine)
+    e5_answer(sample, cache, path, engine)
+
+    assert content == '{"line_items": null}'
+    assert engine.calls == 1
+    assert cache["test-0001"]["input_tokens"] == 1000
+    assert path.read_text(encoding="utf-8").count("\n") == 1
+
+
+def test_e3_cost_per_receipt_uses_the_engine_prices():
+    from evaluation.cord_eval import usd_per_receipt
+
+    # e3.yaml: $0.10 per million input tokens, $0.50 per million output tokens
+    entries = [{"input_tokens": 1000, "output_tokens": 200}, {"input_tokens": 3000, "output_tokens": 600}]
+
+    assert usd_per_receipt(entries) == (2000 * 0.10 + 400 * 0.50) / 1e6
+    assert usd_per_receipt([{"seconds": 1}]) is None
+    assert usd_per_receipt([]) is None
