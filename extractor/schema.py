@@ -35,6 +35,9 @@ class FieldSpec(BaseModel):
     name: str
     type: Literal["text", "date", "amount"]
     description: str = ""
+    # Not on every document (a discount, a second tax): when it is missing,
+    # nothing needs a look.
+    optional: bool = False
 
 
 class DocumentType(BaseModel):
@@ -66,15 +69,70 @@ class DocumentType(BaseModel):
         }
 
 
+def user_doctype_dir() -> Path:
+    """Document types users define, next to their rule sets (templates/doctypes)."""
+
+    from extractor.templates.store import directory
+
+    return directory() / "doctypes"
+
+
 def load_doctype(name: str | Path) -> DocumentType:
-    """Load extractor/doctypes/<name>.yaml, or a YAML file at the given path."""
+    """Load extractor/doctypes/<name>.yaml, a user's type of that name, or a
+    YAML file at the given path."""
 
     path = Path(name)
     if not path.is_file():
         path = DOCTYPE_DIR / f"{name}.yaml"
+    if not path.is_file():
+        path = user_doctype_dir() / f"{name}.yaml"
+    if not path.is_file():
+        raise FileNotFoundError(f"No document type named {name!r}")
 
     with path.open(encoding="utf-8") as file:
         return DocumentType(**yaml.safe_load(file))
+
+
+def doctype_names() -> dict[str, dict]:
+    """Every document type: the ones that come with the project, then the users'."""
+
+    found = {}
+    for directory, builtin in ((DOCTYPE_DIR, True), (user_doctype_dir(), False)):
+        for path in sorted(directory.glob("*.yaml")):
+            if path.stem in found:
+                continue
+            doctype = load_doctype(path)
+            found[path.stem] = {
+                "description": doctype.description.strip(),
+                "builtin": builtin,
+                "fields": [field.model_dump() for field in doctype.fields],
+            }
+
+    return found
+
+
+TYPE_NAME = re.compile(r"^[a-z][a-z0-9_]{0,39}$")
+
+
+def save_doctype(doctype: DocumentType, replace: bool = False) -> Path:
+    """Save a user's document type; the project's own types cannot be replaced."""
+
+    if not TYPE_NAME.match(doctype.name):
+        raise ValueError("A type name is lower case letters, digits and _, starting with a letter")
+    if not doctype.fields:
+        raise ValueError("A document type needs at least one field")
+    names = [field.name for field in doctype.fields]
+    if len(set(names)) != len(names) or not all(TYPE_NAME.match(name) for name in names):
+        raise ValueError("Field names must differ and be lower case letters, digits and _")
+    if (DOCTYPE_DIR / f"{doctype.name}.yaml").is_file():
+        raise FileExistsError(f"{doctype.name!r} comes with the project and cannot be replaced")
+    path = user_doctype_dir() / f"{doctype.name}.yaml"
+    if path.is_file() and not replace:
+        raise FileExistsError(f"A document type named {doctype.name!r} already exists")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(yaml.safe_dump(doctype.model_dump(), allow_unicode=True, sort_keys=False), encoding="utf-8")
+
+    return path
 
 
 def normalize_text(value: str | None) -> str | None:
@@ -173,8 +231,14 @@ def normalize_date(value: str | None) -> str | None:
     return text
 
 
+# A decimal comma, as in "1.250,00 TL" or "12,50": thousands may be grouped
+# with dots before it. Not with spaces: "%20 208,33" is 20 percent and 208,33.
+COMMA_DECIMAL = re.compile(r"\d{1,3}(?:\.\d{3})+,\d{2}(?![\d.,])|(?<![\d.,])\d+,\d{2}(?![\d.,])")
+
+
 def normalize_amount(value: str | None) -> str | None:
-    """Parse an amount to a two-decimal string: 'RM 1,234.5' -> '1234.50'.
+    """Parse an amount to a two-decimal string: 'RM 1,234.5' -> '1234.50',
+    '1.250,00 TL' -> '1250.00'.
 
     Amounts that cannot be parsed fall back to normalize_text.
     """
@@ -185,6 +249,12 @@ def normalize_amount(value: str | None) -> str | None:
     text = normalize_text(value)
     if text is None:
         return None
+
+    comma = COMMA_DECIMAL.search(text)
+    if comma:
+        whole, cents = comma.group().replace(".", "").split(",")
+        negative = text[: comma.start()].rstrip().endswith("-")
+        return f"{'-' if negative else ''}{int(whole)}.{cents}"
 
     match = AMOUNT.search(text.replace(",", "").replace(" ", ""))
     if not match:

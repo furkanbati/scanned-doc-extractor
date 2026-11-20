@@ -18,9 +18,11 @@ from itertools import combinations
 
 from extractor.ocr.base import OcrLine
 from extractor.schema import DocumentType, Fields, loose, normalize_text
-from extractor.templates.read import extract, read_field
+from extractor.templates.read import extract, read_field, read_field_at
 from extractor.templates.values import (
+    alike,
     find_values,
+    value_from_lines,
     normalized,
     printed_in,
     same_value,
@@ -48,8 +50,12 @@ FINGERPRINT_LINES = 40
 
 @dataclass(frozen=True)
 class Example:
+    """A document of the format: its OCR lines, the values the user confirmed,
+    and, where the user picked them, the lines each value is printed on."""
+
     lines: list[OcrLine]
     values: Fields
+    picked: dict[str, list[int]] = field(default_factory=dict)
 
 
 @dataclass
@@ -64,6 +70,8 @@ class Learned:
     template: dict | None
     unstable: dict[str, str] = field(default_factory=dict)
     misfits: dict[str, int] = field(default_factory=dict)
+    # Optional fields left without a rule: on fewer than two examples.
+    skipped: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -77,25 +85,31 @@ def learn(name: str, doctype: DocumentType, examples: list[Example]) -> Learned:
     if len(examples) < MIN_EXAMPLES:
         raise ValueError(f"a rule set needs at least {MIN_EXAMPLES} examples, got {len(examples)}")
 
-    rules, unstable = {}, {}
+    rules, unstable, skipped = {}, {}, []
     for spec in doctype.fields:
-        texts = [[line.text for line in example.lines] for example in examples]
-        values = [example.values.get(spec.name) for example in examples]
-        if not all((value or "").strip() for value in values):
-            unstable[spec.name] = "a value is missing on an example"
-            continue
-        rule = learn_field(spec.type, texts, values)
+        texts, values, picks = field_view(spec, examples)
+        present = [i for i, value in enumerate(values) if (value or "").strip()]
+        if len(present) < len(values):
+            if not spec.optional:
+                unstable[spec.name] = "a value is missing on an example"
+                continue
+            if len(present) < 2:
+                skipped.append(spec.name)
+                continue
+            # An optional field is learned from the examples that print it.
+            texts, values, picks = ([items[i] for i in present] for items in (texts, values, picks))
+        rule = learn_field(spec.type, texts, values, picks)
         if rule is None:
             unstable[spec.name] = "no rule reads it on every example"
             continue
-        failed = self_check(spec.type, texts, values)
+        failed = self_check(spec.type, texts, values, picks)
         if failed is not None:
-            unstable[spec.name] = f"learned from the other examples, the rule misreads example {failed + 1}"
+            unstable[spec.name] = f"learned from the other examples, the rule misreads example {present[failed] + 1}"
             continue
         rules[spec.name] = rule
 
     if unstable:
-        return Learned(None, unstable, misfits(doctype, examples, unstable))
+        return Learned(None, unstable, misfits(doctype, examples, unstable), skipped)
 
     template = {
         "name": name,
@@ -108,28 +122,45 @@ def learn(name: str, doctype: DocumentType, examples: list[Example]) -> Learned:
     # The rule set must read its own examples right as a whole.
     for number, example in enumerate(examples, start=1):
         read = extract(template, doctype, example.lines)
-        wrong = [spec.name for spec in doctype.fields
-                 if not same_value(spec.type, read[spec.name], example.values[spec.name])]
+        wrong = [spec.name for spec in doctype.fields if spec.name in rules
+                 and (example.values.get(spec.name) or "").strip()
+                 and not same_value(spec.type, read[spec.name], example.values[spec.name])]
         if wrong:
-            return Learned(None, {name: f"misread on example {number}" for name in wrong})
+            return Learned(None, {name: f"misread on example {number}" for name in wrong}, skipped=skipped)
 
-    return Learned(template)
+    return Learned(template, skipped=skipped)
+
+
+def field_view(spec, examples: list[Example]) -> tuple[list[list[str]], list[str | None], list[list[int] | None]]:
+    """One field across the examples: lines, values, picked lines. A value
+    left empty where the user picked lines is read from those lines."""
+
+    texts = [[line.text for line in example.lines] for example in examples]
+    picks = [example.picked.get(spec.name) or None for example in examples]
+    values = []
+    for lines, example, pick in zip(texts, examples, picks):
+        value = example.values.get(spec.name)
+        if not (value or "").strip() and pick:
+            value = value_from_lines(spec.type, [lines[i] for i in pick if 0 <= i < len(lines)])
+        values.append(value)
+
+    return texts, values, picks
 
 
 def misfits(doctype: DocumentType, examples: list[Example], fields) -> dict[str, int]:
     """For each field, the one example without which the others agree."""
 
-    kinds = {spec.name: spec.type for spec in doctype.fields}
+    specs = {spec.name: spec for spec in doctype.fields}
     found = {}
     for name in fields:
         for left_out in range(len(examples)):
             others = [example for i, example in enumerate(examples) if i != left_out]
-            texts = [[line.text for line in example.lines] for example in others]
-            values = [example.values.get(name) for example in others]
+            texts, values, picks = field_view(specs[name], others)
             if not all((value or "").strip() for value in values):
                 continue
-            if learn_field(kinds[name], texts, values) is not None and (
-                len(others) < MIN_EXAMPLES or self_check(kinds[name], texts, values) is None
+            kind = specs[name].type
+            if learn_field(kind, texts, values, picks) is not None and (
+                len(others) < MIN_EXAMPLES or self_check(kind, texts, values, picks) is None
             ):
                 found[name] = left_out
                 break
@@ -137,19 +168,21 @@ def misfits(doctype: DocumentType, examples: list[Example], fields) -> dict[str,
     return found
 
 
-def self_check(kind: str, texts: list[list[str]], values: list[str]) -> int | None:
+def self_check(kind: str, texts: list[list[str]], values: list[str], picks: list | None = None) -> int | None:
     """The first example the rule learned from the others misreads, or None."""
 
+    picks = picks or [None] * len(texts)
     for left_out in range(len(texts)):
         others = [i for i in range(len(texts)) if i != left_out]
-        rule = learn_field(kind, [texts[i] for i in others], [values[i] for i in others])
+        rule = learn_field(kind, [texts[i] for i in others], [values[i] for i in others], [picks[i] for i in others])
         if rule is None or not same_value(kind, read_field(rule, kind, texts[left_out]), values[left_out]):
             return left_out
 
     return None
 
 
-def learn_field(kind: str, texts: list[list[str]], values: list[str]) -> dict | None:
+def learn_field(kind: str, texts: list[list[str]], values: list[str], picks: list | None = None,
+                constants: bool = True) -> dict | None:
     """The preferred rule that reads the value right on every example.
 
     Other labels that read every example right too are kept under "also": a
@@ -158,8 +191,8 @@ def learn_field(kind: str, texts: list[list[str]], values: list[str]) -> dict | 
     must still agree, or the gate sends it on (extractor/templates/read.py).
     """
 
-    working = [rule for rule in candidates(kind, texts, values)
-               if all(same_value(kind, read_field(rule, kind, lines), value) for lines, value in zip(texts, values))]
+    working = [rule for rule in candidates(kind, texts, values, picks)
+               if (constants or rule["kind"] != "constant") and all(same_value(kind, read_field(rule, kind, lines), value) for lines, value in zip(texts, values))]
     if not working:
         return None
 
@@ -172,12 +205,12 @@ def learn_field(kind: str, texts: list[list[str]], values: list[str]) -> dict | 
     return rule
 
 
-def candidates(kind: str, texts: list[list[str]], values: list[str]) -> list[dict]:
+def candidates(kind: str, texts: list[list[str]], values: list[str], picks: list | None = None) -> list[dict]:
     """Rules every example allows, most preferred first: a constant, a label
     on the same line, a label above, the n-th date or amount."""
 
     rules = []
-    if kind == "text" and all(similarity(a, b) >= CONSTANT_ALIKE for a, b in combinations(values, 2)):
+    if kind == "text" and all(alike(a, b, CONSTANT_ALIKE) for a, b in combinations(values, 2)):
         # The value the examples agree on most, should a person have typed
         # one slightly differently.
         value = max(values, key=lambda value: (sum(normalize_text(value) == normalize_text(other) for other in values),
@@ -185,8 +218,9 @@ def candidates(kind: str, texts: list[list[str]], values: list[str]) -> list[dic
         rules.append({"kind": "constant", "value": value.strip(), "lines": _constant_lines(value, texts)})
 
     shared = None
-    for lines, value in zip(texts, values):
-        spots = locate(kind, lines, value)
+    for lines, value, pick in zip(texts, values, picks or [None] * len(texts)):
+        # Where the user picked the lines, the value is there and nowhere else.
+        spots = picked_spots(kind, lines, value, pick) if pick else locate(kind, lines, value)
         if not spots:
             return rules
         keys = set()
@@ -251,9 +285,33 @@ def locate(kind: str, lines: list[str], value: str) -> list[_Spot]:
     return spots
 
 
+def picked_spots(kind: str, lines: list[str], value: str, pick: list[int]) -> list[_Spot]:
+    """The value's place in the lines the user picked."""
+
+    pick = sorted(i for i in set(pick) if 0 <= i < len(lines))
+    if not pick:
+        return []
+    first = pick[0]
+    if kind != "text":
+        wanted = normalized(kind, value)
+        found = [(i, f) for i in pick for f in find_values(lines[i], kind)]
+        # The one equal to the confirmed value, else the first in the lines.
+        same = [_Spot(i, 1, f.start) for i, f in found if f.value == wanted]
+        return same or [_Spot(i, 1, f.start) for i, f in found[:1]]
+
+    count = pick[-1] - first + 1
+    start = _start_in_line(lines[first], value) if count == 1 else None
+
+    return [_Spot(first, count, start or 0)]
+
+
 def _start_in_line(text: str, value: str) -> int | None:
     """Where the value starts in a line that holds it after other words."""
 
+    # Printed as typed ("FATURA NO: A-2024-0153"), the value may have no word.
+    exact = text.upper().rfind(value.strip().upper())
+    if exact > 0 and words(text[:exact]):
+        return exact
     first = words(value)[:1]
     target = loose(value)
     if not first or not target or target not in (loose(text) or ""):
@@ -297,6 +355,34 @@ def _keys(kind: str, lines: list[str], spot: _Spot) -> set[tuple]:
         keys.add(("nth", position - len(values), None, None))
 
     return keys
+
+
+def suggest(doctype: DocumentType, examples: list[Example], lines: list[OcrLine]) -> dict[str, dict]:
+    """For a document not yet confirmed: per field, the lines a rule learned
+    from the examples so far reads and the value it reads there.
+
+    Works from one example on, so a user picks every field once and then only
+    checks. A field no rule reads yet is left out.
+    """
+
+    texts = [line.text for line in lines]
+    found = {}
+    for spec in doctype.fields:
+        known, values, picks = field_view(spec, examples)
+        present = [i for i, value in enumerate(values) if (value or "").strip()]
+        if not present:
+            continue
+        args = ([known[i] for i in present], [values[i] for i in present], [picks[i] for i in present])
+        # What the document prints first: from one example every value looks
+        # constant, an invoice number too.
+        rule = learn_field(spec.type, *args, constants=False) or learn_field(spec.type, *args)
+        if rule is None:
+            continue
+        value, at = read_field_at(rule, spec.type, texts)
+        if value is not None:
+            found[spec.name] = {"lines": at, "value": value}
+
+    return found
 
 
 def fingerprint(examples: list[list[OcrLine]]) -> list[str]:

@@ -42,60 +42,70 @@ MAX_LINES = 8
 def read_field(rule: dict, kind: str, texts: list[str]) -> str | None:
     """The field's value as printed in the document, or None if not found."""
 
+    return read_field_at(rule, kind, texts)[0]
+
+
+def read_field_at(rule: dict, kind: str, texts: list[str]) -> tuple[str | None, list[int]]:
+    """The field's value and the lines it was read from ([] when not found)."""
+
     if rule["kind"] == "constant":
         return _constant(rule, texts)
     if rule["kind"] == "nth":
-        values = [value for text in texts for value in find_values(text, kind)]
-        index = rule["index"]
-        return values[index].raw if -len(values) <= index < len(values) else None
+        values = [(index, value) for index, text in enumerate(texts) for value in find_values(text, kind)]
+        position = rule["index"]
+        if -len(values) <= position < len(values):
+            index, value = values[position]
+            return value.raw, [index]
+        return None, []
 
     order = range(len(texts)) if rule["occurrence"] == "first" else range(len(texts) - 1, -1, -1)
     for index in order:
-        value = (_same_line if rule["where"] == "same" else _below)(rule, kind, texts, index)
+        value, lines = (_same_line if rule["where"] == "same" else _below)(rule, kind, texts, index)
         if value:
-            return value
+            return value, lines
 
-    return None
+    return None, []
 
 
-def _constant(rule: dict, texts: list[str]) -> str | None:
+def _constant(rule: dict, texts: list[str]) -> tuple[str | None, list[int]]:
     size = rule.get("lines", 1)
     for index in range(len(texts)):
         for count in sorted({max(1, size - 1), size, size + 1}):
             if printed_in(rule["value"], " ".join(texts[index:index + count])) >= CONSTANT_PRINTED:
-                return rule["value"]
+                return rule["value"], list(range(index, min(index + count, len(texts))))
 
-    return None
+    return None, []
 
 
-def _same_line(rule: dict, kind: str, texts: list[str], index: int) -> str | None:
+def _same_line(rule: dict, kind: str, texts: list[str], index: int) -> tuple[str | None, list[int]]:
     text, label = texts[index], rule["label"]
     if kind != "text":
         for found in find_values(text, kind):
             if ends_with(words(text[:found.start]), label):
-                return found.raw
-        return None
+                return found.raw, [index]
+        return None, []
 
     spans = word_spans(text)
     for start in range(len(spans) - len(label) + 1):
         if starts_with([word for _, _, word in spans[start:]], label):
             value = text[spans[start + len(label) - 1][1]:].strip(" :;-.\t")
-            return value or None
+            return (value, [index]) if value else (None, [])
 
-    return None
+    return None, []
 
 
-def _below(rule: dict, kind: str, texts: list[str], index: int) -> str | None:
+def _below(rule: dict, kind: str, texts: list[str], index: int) -> tuple[str | None, list[int]]:
     if not ends_with(words(texts[index]), rule["label"]):
-        return None
-    after = texts[index + 1:]
+        return None, []
+    first = index + 1
+    after = texts[first:]
 
     if kind != "text":
-        for text in after[:BELOW]:
+        for offset, text in enumerate(after[:BELOW]):
             found = find_values(text, kind)
             if found:
-                return found[0].raw
-        return None
+                return found[0].raw, [first + offset]
+        return None, []
 
     if rule.get("count"):
         taken = after[:rule["count"]]
@@ -106,9 +116,10 @@ def _below(rule: dict, kind: str, texts: list[str], index: int) -> str | None:
                 break
             taken.append(text)
         else:
-            return None  # the stop never came: not this format's layout
+            return None, []  # the stop never came: not this format's layout
 
-    return " ".join(taken).strip() or None
+    value = " ".join(taken).strip()
+    return (value, list(range(first, first + len(taken)))) if value else (None, [])
 
 
 def extract(template: dict, doctype: DocumentType, lines: list[OcrLine]) -> Fields:

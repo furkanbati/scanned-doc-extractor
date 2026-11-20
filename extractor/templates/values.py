@@ -12,6 +12,7 @@ from rapidfuzz import fuzz
 
 from extractor.fields.rules import MONEY
 from extractor.schema import (
+    COMMA_DECIMAL,
     COMPACT_DATE,
     DAY_MONTH_YEAR,
     MONTH_DAY_YEAR,
@@ -21,9 +22,10 @@ from extractor.schema import (
     normalize_date,
 )
 
-# Words as a rule set sees them: runs of two or more letters, upper case.
-# Digits and punctuation vary between documents of one format; words do not.
-WORD = re.compile(r"[A-Z]{2,}")
+# Words as a rule set sees them: runs of two or more letters (any alphabet:
+# "TARİHİ"), upper case. Digits and punctuation vary between documents of one
+# format; words do not.
+WORD = re.compile(r"[^\W\d_]{2,}")
 ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 DATES = (NUMERIC_DATE, DAY_MONTH_YEAR, MONTH_DAY_YEAR, COMPACT_DATE)
 
@@ -65,11 +67,44 @@ def find_values(text: str, kind: str) -> list[Found]:
                 ):
                     found.append(Found(match.start(), match.end(), match.group(), value))
     elif kind == "amount":
+        # "1.250,00" first: read with a decimal point it would be 250.00.
+        for match in COMMA_DECIMAL.finditer(upper):
+            found.append(Found(match.start(), match.end(), match.group(), normalize_amount(match.group())))
         for match in MONEY.finditer(upper):
+            if any(match.start() < other.end and other.start < match.end() for other in found):
+                continue
             whole, cents = match.groups()
             found.append(Found(match.start(), match.end(), match.group(), f"{int(whole.replace(',', ''))}.{cents}"))
 
     return sorted(found, key=lambda value: value.start)
+
+
+def value_from_lines(kind: str, lines: list[str]) -> str | None:
+    """The value in lines a person picked: the first date or amount in them,
+    or for text the lines joined, without a short label ending in ":" before
+    it ("Fatura No: A-153" -> "A-153"; "Vergi Dairesi: Selçuk Vergi No: 123"
+    -> "123"; an address "Cadde No: 12 Konya" keeps its words)."""
+
+    if not lines:
+        return None
+    if kind != "text":
+        for line in lines:
+            found = find_values(line, kind)
+            if found:
+                return found[0].raw
+        return None
+
+    first, rest = lines[0], lines[1:]
+    # A label is words before a colon ("No:"), not the colon of a time (10:00).
+    colons = [match.end() for match in re.finditer(r"[^\W\d_]\s*:", first)]
+    if colons:
+        label = first[colons[-2] if len(colons) > 1 else 0:colons[-1]]
+        after = first[colons[-1]:]
+        if after.strip() and len(words(label)) <= 3:
+            first = after
+    text = " ".join([first.strip(), *(line.strip() for line in rest)]).strip()
+
+    return text or None
 
 
 def normalized(kind: str, value: str | None) -> str | None:
@@ -110,6 +145,23 @@ def printed_in(value: str | None, text: str | None) -> float:
     return fuzz.partial_ratio(value, text)
 
 
+def mostly_digits(text: str | None) -> bool:
+    """An identifier such as an invoice or tax number: half or more digits."""
+
+    letters = loose(text) or ""
+    return bool(letters) and sum(char.isdigit() for char in letters) * 2 >= len(letters)
+
+
+def alike(first: str | None, second: str | None, threshold: float = SAME_TEXT) -> bool:
+    """Whether two texts are the same value: a few misread letters are allowed,
+    but not a different digit in an identifier ("A-2024-0153", "-0157")."""
+
+    if mostly_digits(first) or mostly_digits(second):
+        return bool(loose(first)) and loose(first) == loose(second)
+
+    return similarity(first, second) >= threshold
+
+
 def same_value(kind: str, read: str | None, expected: str | None) -> bool:
     """Whether a value read from the document is the expected one.
 
@@ -120,7 +172,7 @@ def same_value(kind: str, read: str | None, expected: str | None) -> bool:
     if read is None or expected is None:
         return False
     if kind == "text":
-        return similarity(read, expected) >= SAME_TEXT
+        return alike(read, expected)
 
     return normalized(kind, read) == normalized(kind, expected)
 
