@@ -38,13 +38,17 @@ private mode runs OCR and rules (E2). See [Private mode on a GPU](#private-mode-
    lines each field came from are outlined in the field's colour.
 
 The modes are defined in [profiles.yaml](profiles.yaml); the numbers next to them
-are read from the evaluation reports. Under *Advanced* any engine (e1 ... e5) can be
-chosen directly, and the providers not built yet are listed as planned.
+are read from the evaluation reports. Under *Advanced* an engine (e2 ... e5) can be
+chosen directly, and the providers not built yet are listed as planned. E1, the
+Tesseract baseline, is left out of the UI (0.464 against E2's 0.631, both free
+and local); the API and the reports keep it for comparison.
 
 ## Rule sets for documents of one format
 
-If the same format comes in again and again (one supplier's invoices), teach a
-rule set on the UI's *Rule sets* page:
+In the UI, E2 reads with a rule set: choosing it (*Advanced* → *Choose the
+engine myself* → e2) asks first for a saved rule set or for a new one to be
+taught; documents are added after that. A rule set is for a format that comes
+in again and again (one supplier's invoices). Teaching one:
 
 1. Choose the document type: *receipt*, *invoice* (issuer, tax number, invoice
    number, date, subtotal, tax, total), or one you define with your own fields,
@@ -57,9 +61,10 @@ rule set on the UI's *Rule sets* page:
    first example's lines too.
 
 The code learns where each value is printed: no model, no cost, nothing leaves
-the machine. Then choose the rule set under *Advanced* when extracting: each
-document takes a few seconds, and those it does not fit go to E5 (reading the
-same document type) and are marked "rule set did not fit". When the examples
+the machine. The new rule set is then chosen for E2: each document takes a few
+seconds, and those it does not fit go to E5 (reading the same document type)
+and are marked "rule set did not fit". The *Rule sets* page lists the saved
+ones and deletes them. When the examples
 disagree, the page says which example to replace or which lines to check.
 Amounts with a decimal comma ("1.250,00 TL") are read as such.
 
@@ -98,10 +103,14 @@ UI's sidebar says whether the model ran on the GPU or the CPU.
 | Pipeline | Field accuracy | Ignoring spacing | CER | s/receipt (CPU) | USD per 1,000 | Leaves the machine |
 |---|---|---|---|---|---|---|
 | E1 Tesseract + rules (baseline) | 0.464 | 0.498 | 0.465 | 1.34 | 0 | no |
-| E2 RapidOCR (PP-OCRv6) + rules | 0.631 | 0.686 | 0.364 | 3.57 | 0 | no |
+| E2 RapidOCR (PP-OCRv6) + general rules | 0.631 | 0.686 | 0.364 | 3.57 | 0 | no |
 | E3 OpenAI gpt-6-luna, image to JSON | 0.801 | 0.863 | - | 11.7 | 0.51 | yes |
 | E4 RapidOCR + local LLM (qwen3.5:4b) | 0.744 | 0.827 | 0.364 | 10.3 (iGPU) | 0 | no |
 | E5 local vision model (qwen3-vl:2b-instruct) | **0.825** | **0.880** | - | 21.0 (iGPU) | 0 | no |
+
+E1 and E2 are measured here with the general rules written for receipts. In the
+UI, E2 reads with a rule set taught from the user's examples (see above); the
+private mode, until its local model is set up, still runs E2's general rules.
 
 Field accuracy is the share of fields (company, address, date, total) that match
 the label exactly after normalization (case, spaces, date format, amount format).
