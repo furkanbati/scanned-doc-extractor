@@ -44,13 +44,24 @@ chosen directly, and the providers not built yet are listed as planned.
 ## Rule sets for documents of one format
 
 If the same format comes in again and again (one supplier's invoices), teach a
-rule set on the UI's *Rule sets* page: give it a name and three documents of
-that format, correct the values E2 fills in, and the code learns where each
-value is printed. No model, no cost, nothing leaves the machine. Then choose it
-under *Advanced* when extracting: each document takes a few seconds, and those
-it does not fit go to E5 and are marked "rule set did not fit". When the
-examples disagree, the page says which example to replace or which value to
-check.
+rule set on the UI's *Rule sets* page:
+
+1. Choose the document type: *receipt*, *invoice* (issuer, tax number, invoice
+   number, date, subtotal, tax, total), or one you define with your own fields,
+   each text, date or amount and optionally "may be missing".
+2. Give the rule set a name and upload three documents of that format.
+3. The OCR numbers every line on each example; for each field, pick its line(s)
+   from a list. The value is taken from the line (the date or amount in it, or
+   the text after its label) and can be corrected. From the second example on,
+   the lines come picked already; you only check. On receipts E2 picks the
+   first example's lines too.
+
+The code learns where each value is printed: no model, no cost, nothing leaves
+the machine. Then choose the rule set under *Advanced* when extracting: each
+document takes a few seconds, and those it does not fit go to E5 (reading the
+same document type) and are marked "rule set did not fit". When the examples
+disagree, the page says which example to replace or which lines to check.
+Amounts with a decimal comma ("1.250,00 TL") are read as such.
 
 On the 13 SROIE stores it learned (test split), the rule set accepted 85% of
 the stores' other receipts, with 0.959 of their fields right. With E5 reading
@@ -59,8 +70,9 @@ It never accepted a receipt of another store
 ([reports/templates.md](reports/templates.md)).
 
 A rule set reads one layout. For documents in many layouts, use E3 or, to keep
-them local, E5. Rule sets are saved as YAML in `templates/` (in Docker, on a
-volume); they are the user's data and stay out of git.
+them local, E5. Rule sets and the document types users define are saved as YAML
+in `templates/` (in Docker, on a volume); they are the user's data and stay out
+of git. Invoice fields are not measured: there is no labelled invoice set yet.
 
 ## Private mode on a GPU
 
@@ -163,10 +175,16 @@ POST /extract  file            image or PDF; optional profile=accurate|private
                   the lines behind each field, line items (e2, e5; null otherwise),
                   seconds, tokens, USD, page count, the engines tried (chain),
                   and with a rule set a warning when it did not fit
-GET    /templates              saved rule sets, the fields they learn, whether E5 is there
-POST   /templates  name, files (3-6), values (JSON list of each file's fields)
+GET    /doctypes               document types: the project's and the users'
+POST   /doctypes               a new document type: name, fields (name, type, optional)
+POST   /ocr       file         the numbered OCR lines and boxes to pick fields from
+POST   /templates/suggest      per field, the lines and value the examples so far point to
+POST   /templates/value        the value in picked lines, as learning reads it
+POST   /templates/learn        name, doctype, 3-6 examples (lines, picked lines, values)
                -> "saved", or "needs_examples" with the fields that disagree and
                   which example does not fit the others
+GET    /templates              saved rule sets, whether E5 is there
+POST   /templates  name, files, values   the same from files, receipts only
 DELETE /templates/{name}
 ```
 
