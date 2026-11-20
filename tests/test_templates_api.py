@@ -92,6 +92,7 @@ def test_three_documents_teach_a_rule_set_that_is_saved_by_name(client, tmp_path
     listed = client.get("/templates").json()
     assert listed["templates"]["kedai-buku"]["examples"] == 3
     assert listed["fallback"] == "e5"
+    assert listed["fields"] == list(FIELDS)
 
 
 def test_a_document_of_the_format_is_read_by_the_rule_set(client):
@@ -167,3 +168,25 @@ def test_a_rule_set_can_be_deleted(client):
     assert client.delete("/templates/kedai-buku").status_code == 200
     assert client.get("/templates").json()["templates"] == {}
     assert client.delete("/templates/kedai-buku").status_code == 404
+
+
+def test_the_table_names_the_rule_set_and_marks_documents_it_did_not_fit():
+    from ui.export import _items_check, result_rows
+
+    gate = {"accepted": True, "reasons": []}
+    items = {"items": [], "reasons": ["no total line"], "needs_review": True}
+    read = {"fields": {"total": "9.90"}, "gate": gate, "method": "template:kedai-buku", "template": "Kedai Buku",
+            "warning": None, "chain": [{"method": "template:kedai-buku"}], "seconds": 1.0, "usd": None,
+            "line_items": items}
+    sent_on = {**read, "method": "e5", "template": None,
+               "warning": "The rule set did not fit this document (...). E5 read it instead: check the result."}
+
+    rows = result_rows([{"file": "a.png", "error": None, "result": read},
+                        {"file": "b.png", "error": None, "result": sent_on}])
+
+    assert rows[0]["engine"] == "rule set: Kedai Buku"
+    assert rows[0]["check"] == ""
+    assert rows[1]["engine"] == "e5"
+    assert rows[1]["check"] == "rule set did not fit"
+    # The rule set's gate checks fields; the items keep their own reasons.
+    assert _items_check(read) == "line items: no total line"
