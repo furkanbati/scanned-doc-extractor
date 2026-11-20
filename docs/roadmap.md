@@ -18,8 +18,16 @@ section.
 
 ## Checks and the hybrid chain
 
-5. **Rejected documents are not sent on to E5.** The E2 -> E5 -> person chain
-   exists only in the evaluation (`cord_gate --hybrid`), not in the API.
+5. **No chained mode is offered; the gate needs a company/address check.**
+   The API runs chains (profiles.yaml `chain`), but on SROIE the gate keeps
+   only 21 of 400 receipts with E2, and on those the company is right on 10
+   and the address on 2 (reports/sroie_chain.md): the gate checks numbers and
+   cannot see a misread name. Future work, before a chain is offered for
+   header fields: a check built on general signals, such as OCR confidence on
+   the name lines, an address with a number or postcode, the name's position
+   near the top. Tune it on train + validation with E2 only (no paid calls),
+   then measure once on test. Worth it where E2's rules fit the documents
+   (CORD-like); on SROIE it gains little, since E2 keeps so few.
 6. **No retry with feedback.** When a model's numbers do not add up, it is not
    asked again ("the items add up to X, you said Y").
 7. **User corrections are not stored.** Edits in the UI only go into the
@@ -32,9 +40,9 @@ section.
 9. **Header-field rules are Malaysian.** On Indonesian receipts nearly every
    receipt gets "date not found", and the gate rejects it for that.
 10. **Keywords live in code.** Move them to one YAML file per language.
-11. **Not measured:** E3's fields on SROIE with the line-item prompt; its
-    fields-only numbers are those in e3.yaml. (E3's line items on CORD:
-    reports/cord_e3_line_items.md.)
+11. **E3 is measured with the line-item prompt** (SROIE fields 0.801, CORD
+    line items in reports/cord_e3_line_items.md); its fields-only numbers stay
+    as a comment in e3.yaml. Not measured: E4 with line items (item 1).
 12. **Line items are measured on CORD only.** No pilot set of receipts from
     another country.
 13. **Only the first page of a PDF is read.**

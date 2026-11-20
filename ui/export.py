@@ -42,6 +42,10 @@ def result_rows(results: list[dict]) -> list[dict]:
         if result.get("pages", 1) > 1:
             notes.append(f"only page 1 of {result['pages']} read")
         row["check"] = "; ".join(notes)
+        if "chain" in result:
+            # The engine whose result this is; in a chained mode, the first one
+            # whose checks all passed, or the last one tried.
+            row["engine"] = result["method"]
         row["seconds"] = result["seconds"]
         row["usd"] = result["usd"]
         rows.append(row)

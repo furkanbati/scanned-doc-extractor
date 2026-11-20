@@ -122,6 +122,60 @@ def engines() -> dict[str, dict]:
     return result
 
 
+def single_profile(profile: dict, all_engines: dict) -> dict:
+    """A mode that runs one engine, or its fallback while that engine cannot run."""
+
+    method = profile["method"]
+    engine = all_engines[method]
+    fallback_reason = None
+    fallback = profile.get("fallback")
+    if not engine["available"] and fallback and all_engines[fallback]["available"]:
+        fallback_reason = engine["unavailable_reason"]
+        method, engine = fallback, all_engines[fallback]
+
+    return {
+        "label": profile["label"],
+        "description": profile["description"].strip(),
+        # The engine this mode runs now; differs from profiles.yaml's
+        # `method` while that engine cannot run here.
+        "method": method,
+        "chain": [method],
+        "skipped": {},
+        "fallback_reason": fallback_reason,
+        "leaves_machine": engine["leaves_machine"],
+        "line_items": engine["line_items"],
+        "available": engine["available"],
+        "unavailable_reason": engine["unavailable_reason"],
+        "measured": engine["measured"],
+    }
+
+
+def chain_profile(profile: dict, all_engines: dict) -> dict:
+    """A mode that runs engines in turn: each one the review gate rejects hands
+    the document to the next. Engines that cannot run here are skipped."""
+
+    steps = [step for step in profile["chain"] if all_engines[step]["available"]]
+    skipped = {step: all_engines[step]["unavailable_reason"]
+               for step in profile["chain"] if not all_engines[step]["available"]}
+    available = bool(steps)
+
+    return {
+        "label": profile["label"],
+        "description": profile["description"].strip(),
+        "method": steps[0] if steps else profile["chain"][0],
+        "chain": steps,
+        "skipped": skipped,
+        "fallback_reason": "; ".join(f"{step} skipped: {reason}" for step, reason in skipped.items()) or None,
+        # Only documents the earlier engines reject reach a cloud engine.
+        "leaves_machine": any(all_engines[step]["leaves_machine"] for step in steps),
+        "line_items": all(all_engines[step]["line_items"] for step in steps) if steps else False,
+        "available": available,
+        "unavailable_reason": None if available else "None of its engines can run here",
+        # The chain's own numbers (profiles.yaml), measured as a whole.
+        "measured": profile.get("measured"),
+    }
+
+
 def profiles() -> dict:
     """The modes with their engine's availability and numbers, and the default."""
 
@@ -130,26 +184,7 @@ def profiles() -> dict:
     result = {}
 
     for name, profile in spec["profiles"].items():
-        method = profile["method"]
-        engine = all_engines[method]
-        fallback_reason = None
-        fallback = profile.get("fallback")
-        if not engine["available"] and fallback and all_engines[fallback]["available"]:
-            fallback_reason = engine["unavailable_reason"]
-            method, engine = fallback, all_engines[fallback]
-        result[name] = {
-            "label": profile["label"],
-            "description": profile["description"].strip(),
-            # The engine this mode runs now; differs from profiles.yaml's
-            # `method` while that engine cannot run here.
-            "method": method,
-            "fallback_reason": fallback_reason,
-            "leaves_machine": engine["leaves_machine"],
-            "line_items": engine["line_items"],
-            "available": engine["available"],
-            "unavailable_reason": engine["unavailable_reason"],
-            "measured": engine["measured"],
-        }
+        result[name] = chain_profile(profile, all_engines) if "chain" in profile else single_profile(profile, all_engines)
 
     return {
         "default": default_profile(result, spec["order"]),

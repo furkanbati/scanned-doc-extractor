@@ -61,8 +61,8 @@ def read_document(data: bytes) -> tuple[Image.Image, int]:
     return image, 1
 
 
-def choose_method(profile: str | None, method: str | None) -> tuple[str | None, str]:
-    """The mode (if one was used) and the engine to run."""
+def choose_method(profile: str | None, method: str | None) -> tuple[str | None, list[str]]:
+    """The mode (if one was used) and the engines to run, in turn."""
 
     if method:
         engines = catalogue.engines()
@@ -70,7 +70,7 @@ def choose_method(profile: str | None, method: str | None) -> tuple[str | None, 
             raise HTTPException(status_code=400, detail=f"Unknown engine {method!r}")
         if not engines[method]["available"]:
             raise HTTPException(status_code=503, detail=engines[method]["unavailable_reason"])
-        return None, method
+        return None, [method]
 
     offered = catalogue.profiles()
     profile = profile or offered["default"]
@@ -80,7 +80,7 @@ def choose_method(profile: str | None, method: str | None) -> tuple[str | None, 
     if not chosen["available"]:
         raise HTTPException(status_code=503, detail=chosen["unavailable_reason"])
 
-    return profile, chosen["method"]
+    return profile, chosen["chain"]
 
 
 @app.get("/health")
@@ -121,21 +121,59 @@ async def extract(
     profile: str | None = Form(None),
     method: str | None = Form(None),
 ) -> dict:
-    profile, method = choose_method(profile, method)
+    profile, steps = choose_method(profile, method)
 
     data = await file.read()
     if len(data) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="File larger than 10 MB")
     image, pages = read_document(data)
 
+    # Each engine's gate decides whether its result stands or the document goes
+    # to the next engine; the last engine's result stands either way.
+    answer, chain, failure = None, [], None
+    for number, step in enumerate(steps, start=1):
+        try:
+            result = run_engine(step, image)
+        except Exception as error:
+            failure = f"Extraction failed: {error}"
+            chain.append({"method": step, "seconds": None, "usd": None, "accepted": None,
+                          "reasons": [], "error": str(error)})
+            continue
+        answer = result
+        gate = result["gate"]
+        chain.append({"method": step, "seconds": result["seconds"], "usd": result["usd"],
+                      "accepted": gate["accepted"] if gate else None,
+                      "reasons": gate["reasons"] if gate else [], "error": None})
+        # An engine without line items has no gate: its result cannot be
+        # checked, so a later engine still gets the document.
+        if (gate is not None and gate["accepted"]) or number == len(steps):
+            break
+
+    if answer is None:
+        raise HTTPException(status_code=502, detail=failure)
+
+    costs = [step["usd"] for step in chain if step["usd"] is not None]
+
+    return {
+        "profile": profile,
+        **answer,
+        # Every engine that ran, in order, with its gate decision; the last
+        # one that did not fail gave the result.
+        "chain": chain,
+        "seconds": round(sum(step["seconds"] or 0 for step in chain), 3),
+        "usd": sum(costs) if costs else None,
+        "pages": pages,
+    }
+
+
+def run_engine(method: str, image: Image.Image) -> dict:
+    """One engine's result on the image, with its checks and gate decision."""
+
     config = load_engine(method)
     doctype = load_doctype(config["doctype"])
 
     start = time.perf_counter()
-    try:
-        result = get_pipeline(method).run(image)
-    except Exception as error:
-        raise HTTPException(status_code=502, detail=f"Extraction failed: {error}")
+    result = get_pipeline(method).run(image)
     seconds = time.perf_counter() - start
 
     usd = None
@@ -155,7 +193,6 @@ async def extract(
     line_items = result.line_items.to_json() if result.line_items is not None else None
 
     return {
-        "profile": profile,
         "method": method,
         "doctype": doctype.name,
         "fields": fields,
@@ -173,5 +210,4 @@ async def extract(
         "usage": vars(result.usage) if result.usage else None,
         "usd": usd,
         "image_size": list(image.size),
-        "pages": pages,
     }
