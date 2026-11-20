@@ -1,0 +1,225 @@
+{
+  "split": "dev",
+  "fingerprint_share": 0.6,
+  "items_check": false,
+  "stores": 8,
+  "learned": 6,
+  "read": 52,
+  "accepted": 41,
+  "right_when_accepted": {
+    "company": 1.0,
+    "address": 0.7073,
+    "date": 1.0,
+    "total": 0.9024,
+    "mean": 0.9024
+  },
+  "right_all": {
+    "company": 1.0,
+    "address": 0.6538,
+    "date": 1.0,
+    "total": 0.75,
+    "mean": 0.8509
+  },
+  "other_stores_accepted": 0,
+  "other_stores_examples": [],
+  "per_store": {
+    "99SPEEDMARTSB": {
+      "receipts": 14,
+      "learned": true,
+      "shown": 5,
+      "examples": 3,
+      "read": 9,
+      "accepted": 7,
+      "right_when_accepted": {
+        "company": 1.0,
+        "address": 0.7143,
+        "date": 1.0,
+        "total": 0.5714,
+        "mean": 0.8214
+      },
+      "right_all": {
+        "company": 1.0,
+        "address": 0.5556,
+        "date": 1.0,
+        "total": 0.4444,
+        "mean": 0.75
+      },
+      "rules": {
+        "company": "constant",
+        "address": "label MART",
+        "date": "label PM",
+        "total": "label GST RM"
+      },
+      "fingerprint": 5,
+      "other_stores_accepted": 0
+    },
+    "AIKHUATHARDWAREENTERPRISESETIAALAMSDNBHD": {
+      "receipts": 5,
+      "learned": false,
+      "shown": 5,
+      "unstable": {
+        "total": "learned from the other examples, the rule misreads example 1"
+      }
+    },
+    "GARDENIABAKERIESKLSDNBHD": {
+      "receipts": 15,
+      "learned": false,
+      "shown": 6,
+      "unstable": {
+        "date": "learned from the other examples, the rule misreads example 3",
+        "total": "no rule reads it on every example"
+      }
+    },
+    "MRDIYMSDNBHD": {
+      "receipts": 17,
+      "learned": true,
+      "shown": 4,
+      "examples": 3,
+      "read": 13,
+      "accepted": 9,
+      "right_when_accepted": {
+        "company": 1.0,
+        "address": 0.8889,
+        "date": 1.0,
+        "total": 0.8889,
+        "mean": 0.9445
+      },
+      "right_all": {
+        "company": 1.0,
+        "address": 0.9231,
+        "date": 1.0,
+        "total": 0.7692,
+        "mean": 0.9231
+      },
+      "rules": {
+        "company": "constant",
+        "address": "constant",
+        "date": "nth",
+        "total": "label RM"
+      },
+      "fingerprint": 9,
+      "other_stores_accepted": 0
+    },
+    "RESTORANWANSHENG": {
+      "receipts": 9,
+      "learned": true,
+      "shown": 3,
+      "examples": 3,
+      "read": 6,
+      "accepted": 5,
+      "right_when_accepted": {
+        "company": 1.0,
+        "address": 1.0,
+        "date": 1.0,
+        "total": 1.0,
+        "mean": 1.0
+      },
+      "right_all": {
+        "company": 1.0,
+        "address": 1.0,
+        "date": 1.0,
+        "total": 0.8333,
+        "mean": 0.9583
+      },
+      "rules": {
+        "company": "constant",
+        "address": "constant",
+        "date": "label DATE",
+        "total": "label CASH"
+      },
+      "fingerprint": 11,
+      "other_stores_accepted": 0
+    },
+    "SANYUSTATIONERYSHOP": {
+      "receipts": 8,
+      "learned": true,
+      "shown": 3,
+      "examples": 3,
+      "read": 5,
+      "accepted": 5,
+      "right_when_accepted": {
+        "company": 1.0,
+        "address": 1.0,
+        "date": 1.0,
+        "total": 1.0,
+        "mean": 1.0
+      },
+      "right_all": {
+        "company": 1.0,
+        "address": 1.0,
+        "date": 1.0,
+        "total": 1.0,
+        "mean": 1.0
+      },
+      "rules": {
+        "company": "constant",
+        "address": "constant",
+        "date": "label DATE",
+        "total": "label GST"
+      },
+      "fingerprint": 18,
+      "other_stores_accepted": 0
+    },
+    "SYARIKATPERNIAGAANGINKEE": {
+      "receipts": 9,
+      "learned": true,
+      "shown": 3,
+      "examples": 3,
+      "read": 6,
+      "accepted": 6,
+      "right_when_accepted": {
+        "company": 1.0,
+        "address": 1.0,
+        "date": 1.0,
+        "total": 1.0,
+        "mean": 1.0
+      },
+      "right_all": {
+        "company": 1.0,
+        "address": 1.0,
+        "date": 1.0,
+        "total": 1.0,
+        "mean": 1.0
+      },
+      "rules": {
+        "company": "constant",
+        "address": "constant",
+        "date": "label DATE",
+        "total": "label CASH"
+      },
+      "fingerprint": 15,
+      "other_stores_accepted": 0
+    },
+    "UNIHAKKAINTERNATIONALSDNBHD": {
+      "receipts": 17,
+      "learned": true,
+      "shown": 4,
+      "examples": 3,
+      "read": 13,
+      "accepted": 9,
+      "right_when_accepted": {
+        "company": 1.0,
+        "address": 0.0,
+        "date": 1.0,
+        "total": 1.0,
+        "mean": 0.75
+      },
+      "right_all": {
+        "company": 1.0,
+        "address": 0.0,
+        "date": 1.0,
+        "total": 0.6923,
+        "mean": 0.6731
+      },
+      "rules": {
+        "company": "constant",
+        "address": "constant",
+        "date": "label BHD",
+        "total": "label AMOUNT"
+      },
+      "fingerprint": 14,
+      "other_stores_accepted": 0
+    }
+  },
+  "with_e5": {}
+}
