@@ -34,3 +34,6 @@ evaluation/results/**/*.receipts.jsonl
 
 # Rule sets users teach (extractor/templates): their own data
 /templates/
+
+# Not part of the project
+/fiverr_rag_turkish_thumbnail.png
