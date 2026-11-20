@@ -31,3 +31,6 @@ evaluation/results/**/checkpoint.jsonl
 # Personal development log (Turkish), not part of the project
 notes/
 evaluation/results/**/*.receipts.jsonl
+
+# Rule sets users teach (extractor/templates): their own data
+/templates/

@@ -52,5 +52,8 @@ section.
 14. **E5 is still slow.** On the Intel Arc 130T iGPU it takes 21 s per receipt
     with line items (33 s on the CPU for the same work). Try smaller images, or
     reading the fields without the items when the items are not needed.
-15. **Format fingerprinting and per-format rules** (steps 3 and 4 of the hybrid
-    plan) are not started.
+15. **Rule sets learn only the four receipt fields** (reports/templates.md).
+    Next: fields the user defines (invoice number, tax number), line-item
+    columns learned from the examples, and choosing the rule set by its
+    fingerprint instead of by hand. The two SROIE stores it could not learn
+    print their address and total in more than one place.
