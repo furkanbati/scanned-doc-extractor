@@ -281,16 +281,14 @@ def new_doctype_form() -> None:
             st.rerun()
 
 
-def rule_sets_page() -> None:
-    """Teach a rule set by picking, on each example, the OCR lines of each field."""
+def new_rule_set_form() -> None:
+    """E2's first step: teach a rule set by picking, on each example, the OCR
+    lines of each field. Documents are read only after it is saved."""
 
-    st.subheader("Rule sets for documents of one format")
+    st.subheader("E2: first teach a rule set")
     st.markdown(SAME_FORMAT)
     saved = load_templates()
     doctypes = load_doctypes()
-    if "rule_set_saved" in st.session_state:
-        st.success(f"Saved the rule set {st.session_state.pop('rule_set_saved')!r}. Choose it under "
-                   "Extract → Advanced → Read with one of my rule sets.")
     if not saved["fallback_available"]:
         st.warning("E5 is not set up here, so documents a rule set cannot read are only marked for a check.")
 
@@ -314,6 +312,14 @@ def rule_sets_page() -> None:
             teach_examples(name.strip(), doctype, doctypes.get(doctype, {"fields": []})["fields"],
                            [(upload.name, upload.getvalue()) for upload in uploads])
 
+
+def rule_sets_page() -> None:
+    """The saved rule sets; new ones are taught in Extract by choosing E2."""
+
+    st.subheader("Rule sets")
+    st.caption("A rule set is E2's reading of one format. Teach a new one under Extract → Advanced → "
+               "Choose the engine myself → e2.")
+    saved = load_templates()
     st.markdown("**Saved rule sets**")
     if not saved["templates"]:
         st.caption("None yet.")
@@ -455,6 +461,7 @@ def learn_rule_set(name: str, doctype: str, state: dict, documents: list, replac
     if body["status"] == "saved":
         # Shown after the rerun, which also lists the new rule set.
         st.session_state.rule_set_saved = name
+        st.session_state.pick_rule_set = body["file"]
         st.session_state.teach = {}
         st.rerun()
 
@@ -486,6 +493,29 @@ def engine_label(name: str, engine: dict) -> str:
     state = "" if engine["available"] else " — not available"
 
     return f"{name}: {engine['ocr']} → {engine['fields']}{model}, {where}{state}"
+
+
+HIDDEN_ENGINES = {"e1"}
+NEW_RULE_SET = "+ Teach a new rule set"
+
+
+def e2_rule_set() -> tuple[str, str | None]:
+    """E2 reads with a rule set taught from the user's examples: one saved, or
+    ("template", None) while a new one is to be taught first."""
+
+    saved = load_templates()["templates"]
+    if "pick_rule_set" in st.session_state:
+        # Just saved: chosen before the widget is drawn.
+        st.session_state.e2_rule_set = st.session_state.pop("pick_rule_set")
+    options = [*saved, NEW_RULE_SET]
+    if st.session_state.get("e2_rule_set") not in options:
+        st.session_state.e2_rule_set = options[0]
+    file = st.selectbox("Rule set", options, key="e2_rule_set",
+                        format_func=lambda key: saved[key]["name"] if key in saved else key)
+    st.caption("E2 reads documents of one format with a rule set learned from three of your examples: "
+               "no model, free, on this server. Those it does not fit go to E5 and are marked for a check.")
+
+    return ("template", None if file == NEW_RULE_SET else file)
 
 
 def file_key(name: str, data: bytes) -> str:
@@ -551,8 +581,9 @@ with st.sidebar:
 
     with st.expander("Advanced"):
         if st.checkbox("Choose the engine myself"):
-            engine_names = list(engines)
-            default_engine = engine_names.index(chosen["method"])
+            # E1 (Tesseract) stays in the API and the reports as the baseline.
+            engine_names = [name for name in engines if name not in HIDDEN_ENGINES]
+            default_engine = engine_names.index(chosen["method"]) if chosen["method"] in engine_names else 0
             method = st.selectbox(
                 "Engine",
                 engine_names,
@@ -560,21 +591,14 @@ with st.sidebar:
                 format_func=lambda name: engine_label(name, engines[name]),
             )
             engine = engines[method]
-            st.caption(engine["description"])
-            st.caption(describe(engine["measured"]))
             choice = ("method", method)
             available, reason, leaves = engine["available"], engine["unavailable_reason"], engine["leaves_machine"]
             measured = engine["measured"]
-
-        saved = load_templates()["templates"]
-        if saved and st.checkbox("Read with one of my rule sets"):
-            file = st.selectbox("Rule set", list(saved), format_func=lambda key: saved[key]["name"])
-            st.caption("Only for documents of the format it was taught; the others go to E5 and are marked "
-                       "for a check. Free, on this server.")
-            choice = ("template", file)
-            available, reason, leaves, measured = True, None, False, None
-        elif not saved:
-            st.caption("Rule sets for documents of one format: see the Rule sets page.")
+            if method == "e2":
+                choice, measured = e2_rule_set(), None
+            else:
+                st.caption(engine["description"])
+                st.caption(describe(engine["measured"]))
 
         st.markdown("**Planned providers**")
         for provider in catalogue["planned"]:
@@ -584,6 +608,15 @@ with st.sidebar:
         st.warning("Documents are sent to a cloud API (OpenAI) in this mode.")
     if not available:
         st.error(f"Not available on this server: {reason}")
+
+# ---------------------------------------------------------------- E2: a rule set first
+
+if choice == ("template", None):
+    new_rule_set_form()
+    st.stop()
+if "rule_set_saved" in st.session_state:
+    st.success(f"Saved the rule set {st.session_state.pop('rule_set_saved')!r}; it is chosen for E2. "
+               "Add the documents of its format.")
 
 # ---------------------------------------------------------------- local model setup
 
