@@ -1,0 +1,462 @@
+{
+  "split": "test",
+  "fingerprint_share": 0.6,
+  "items_check": false,
+  "stores": 15,
+  "learned": 13,
+  "read": 145,
+  "accepted": 123,
+  "right_when_accepted": {
+    "company": 1.0,
+    "address": 0.8862,
+    "date": 0.9919,
+    "total": 0.9593,
+    "mean": 0.9593
+  },
+  "right_all": {
+    "company": 0.9793,
+    "address": 0.8828,
+    "date": 0.9862,
+    "total": 0.8414,
+    "mean": 0.9224
+  },
+  "other_stores_accepted": 0,
+  "other_stores_examples": [],
+  "per_store": {
+    "99SPEEDMARTSB": {
+      "receipts": 17,
+      "learned": false,
+      "shown": 6,
+      "unstable": {
+        "address": "no rule reads it on every example",
+        "total": "no rule reads it on every example"
+      }
+    },
+    "AEONCOMBHD": {
+      "receipts": 14,
+      "learned": true,
+      "shown": 3,
+      "examples": 3,
+      "read": 11,
+      "accepted": 4,
+      "right_when_accepted": {
+        "company": 1.0,
+        "address": 1.0,
+        "date": 1.0,
+        "total": 1.0,
+        "mean": 1.0
+      },
+      "right_all": {
+        "company": 0.7273,
+        "address": 0.9091,
+        "date": 1.0,
+        "total": 0.4545,
+        "mean": 0.7727
+      },
+      "rules": {
+        "company": "constant",
+        "address": "constant",
+        "date": "label TOTAL",
+        "total": "label GST"
+      },
+      "fingerprint": 11,
+      "other_stores_accepted": 0
+    },
+    "AIKHUATHARDWAREENTERPRISESETIAALAMSDNBHD": {
+      "receipts": 7,
+      "learned": true,
+      "shown": 4,
+      "examples": 3,
+      "read": 3,
+      "accepted": 3,
+      "right_when_accepted": {
+        "company": 1.0,
+        "address": 1.0,
+        "date": 1.0,
+        "total": 1.0,
+        "mean": 1.0
+      },
+      "right_all": {
+        "company": 1.0,
+        "address": 1.0,
+        "date": 1.0,
+        "total": 1.0,
+        "mean": 1.0
+      },
+      "rules": {
+        "company": "constant",
+        "address": "constant",
+        "date": "label DATE",
+        "total": "label GST"
+      },
+      "fingerprint": 17,
+      "other_stores_accepted": 0
+    },
+    "BEMEDSPSDNBHD": {
+      "receipts": 5,
+      "learned": true,
+      "shown": 4,
+      "examples": 3,
+      "read": 1,
+      "accepted": 1,
+      "right_when_accepted": {
+        "company": 1.0,
+        "address": 1.0,
+        "date": 1.0,
+        "total": 1.0,
+        "mean": 1.0
+      },
+      "right_all": {
+        "company": 1.0,
+        "address": 1.0,
+        "date": 1.0,
+        "total": 1.0,
+        "mean": 1.0
+      },
+      "rules": {
+        "company": "constant",
+        "address": "constant",
+        "date": "label CB",
+        "total": "label GST"
+      },
+      "fingerprint": 8,
+      "other_stores_accepted": 0
+    },
+    "GARDENIABAKERIESKLSDNBHD": {
+      "receipts": 30,
+      "learned": true,
+      "shown": 3,
+      "examples": 3,
+      "read": 27,
+      "accepted": 25,
+      "right_when_accepted": {
+        "company": 1.0,
+        "address": 1.0,
+        "date": 1.0,
+        "total": 1.0,
+        "mean": 1.0
+      },
+      "right_all": {
+        "company": 1.0,
+        "address": 1.0,
+        "date": 1.0,
+        "total": 0.963,
+        "mean": 0.9908
+      },
+      "rules": {
+        "company": "constant",
+        "address": "constant",
+        "date": "label DATE",
+        "total": "label PAYABLE"
+      },
+      "fingerprint": 17,
+      "other_stores_accepted": 0
+    },
+    "GERBANGALAFRESTAURANTSSDNBHD": {
+      "receipts": 7,
+      "learned": true,
+      "shown": 3,
+      "examples": 3,
+      "read": 4,
+      "accepted": 4,
+      "right_when_accepted": {
+        "company": 1.0,
+        "address": 0.5,
+        "date": 1.0,
+        "total": 1.0,
+        "mean": 0.875
+      },
+      "right_all": {
+        "company": 1.0,
+        "address": 0.5,
+        "date": 1.0,
+        "total": 1.0,
+        "mean": 0.875
+      },
+      "rules": {
+        "company": "constant",
+        "address": "constant",
+        "date": "label REG",
+        "total": "label GST"
+      },
+      "fingerprint": 9,
+      "other_stores_accepted": 0
+    },
+    "KEDAIPAPANYEWCHUAN": {
+      "receipts": 9,
+      "learned": true,
+      "shown": 3,
+      "examples": 3,
+      "read": 6,
+      "accepted": 6,
+      "right_when_accepted": {
+        "company": 1.0,
+        "address": 0.0,
+        "date": 1.0,
+        "total": 1.0,
+        "mean": 0.75
+      },
+      "right_all": {
+        "company": 1.0,
+        "address": 0.0,
+        "date": 1.0,
+        "total": 1.0,
+        "mean": 0.75
+      },
+      "rules": {
+        "company": "constant",
+        "address": "constant",
+        "date": "label DATE",
+        "total": "label GST"
+      },
+      "fingerprint": 20,
+      "other_stores_accepted": 0
+    },
+    "MRDIYKUCHAISDNBHD": {
+      "receipts": 9,
+      "learned": true,
+      "shown": 3,
+      "examples": 3,
+      "read": 6,
+      "accepted": 6,
+      "right_when_accepted": {
+        "company": 1.0,
+        "address": 1.0,
+        "date": 1.0,
+        "total": 0.6667,
+        "mean": 0.9167
+      },
+      "right_all": {
+        "company": 1.0,
+        "address": 1.0,
+        "date": 1.0,
+        "total": 0.6667,
+        "mean": 0.9167
+      },
+      "rules": {
+        "company": "constant",
+        "address": "constant",
+        "date": "nth",
+        "total": "label RM"
+      },
+      "fingerprint": 11,
+      "other_stores_accepted": 0
+    },
+    "MRDIYMSDNBHD": {
+      "receipts": 15,
+      "learned": true,
+      "shown": 3,
+      "examples": 3,
+      "read": 12,
+      "accepted": 12,
+      "right_when_accepted": {
+        "company": 1.0,
+        "address": 0.9167,
+        "date": 0.9167,
+        "total": 0.75,
+        "mean": 0.8959
+      },
+      "right_all": {
+        "company": 1.0,
+        "address": 0.9167,
+        "date": 0.9167,
+        "total": 0.75,
+        "mean": 0.8959
+      },
+      "rules": {
+        "company": "constant",
+        "address": "constant",
+        "date": "nth",
+        "total": "label RM"
+      },
+      "fingerprint": 11,
+      "other_stores_accepted": 0
+    },
+    "ONEONETHREESEAFOODRESTAURANTSDNBHD": {
+      "receipts": 8,
+      "learned": true,
+      "shown": 3,
+      "examples": 3,
+      "read": 5,
+      "accepted": 4,
+      "right_when_accepted": {
+        "company": 1.0,
+        "address": 0.25,
+        "date": 1.0,
+        "total": 1.0,
+        "mean": 0.8125
+      },
+      "right_all": {
+        "company": 1.0,
+        "address": 0.4,
+        "date": 1.0,
+        "total": 0.8,
+        "mean": 0.8
+      },
+      "rules": {
+        "company": "constant",
+        "address": "constant",
+        "date": "label CLOSED",
+        "total": "label CASH"
+      },
+      "fingerprint": 14,
+      "other_stores_accepted": 0
+    },
+    "POPULARBOOKCOMSDNBHD": {
+      "receipts": 9,
+      "learned": false,
+      "shown": 6,
+      "unstable": {
+        "address": "no rule reads it on every example",
+        "total": "no rule reads it on every example"
+      }
+    },
+    "RESTORANWANSHENG": {
+      "receipts": 17,
+      "learned": true,
+      "shown": 3,
+      "examples": 3,
+      "read": 14,
+      "accepted": 13,
+      "right_when_accepted": {
+        "company": 1.0,
+        "address": 0.9231,
+        "date": 1.0,
+        "total": 1.0,
+        "mean": 0.9808
+      },
+      "right_all": {
+        "company": 1.0,
+        "address": 0.9286,
+        "date": 0.9286,
+        "total": 1.0,
+        "mean": 0.9643
+      },
+      "rules": {
+        "company": "constant",
+        "address": "constant",
+        "date": "label DATE",
+        "total": "label CASH"
+      },
+      "fingerprint": 11,
+      "other_stores_accepted": 0
+    },
+    "SANYUSTATIONERYSHOP": {
+      "receipts": 28,
+      "learned": true,
+      "shown": 3,
+      "examples": 3,
+      "read": 25,
+      "accepted": 24,
+      "right_when_accepted": {
+        "company": 1.0,
+        "address": 1.0,
+        "date": 1.0,
+        "total": 1.0,
+        "mean": 1.0
+      },
+      "right_all": {
+        "company": 1.0,
+        "address": 1.0,
+        "date": 1.0,
+        "total": 1.0,
+        "mean": 1.0
+      },
+      "rules": {
+        "company": "constant",
+        "address": "constant",
+        "date": "label DATE",
+        "total": "label GST"
+      },
+      "fingerprint": 19,
+      "other_stores_accepted": 0
+    },
+    "SYARIKATPERNIAGAANGINKEE": {
+      "receipts": 13,
+      "learned": true,
+      "shown": 4,
+      "examples": 3,
+      "read": 9,
+      "accepted": 9,
+      "right_when_accepted": {
+        "company": 1.0,
+        "address": 1.0,
+        "date": 1.0,
+        "total": 1.0,
+        "mean": 1.0
+      },
+      "right_all": {
+        "company": 1.0,
+        "address": 1.0,
+        "date": 1.0,
+        "total": 1.0,
+        "mean": 1.0
+      },
+      "rules": {
+        "company": "constant",
+        "address": "constant",
+        "date": "label DATE",
+        "total": "label CASH"
+      },
+      "fingerprint": 12,
+      "other_stores_accepted": 0
+    },
+    "UNIHAKKAINTERNATIONALSDNBHD": {
+      "receipts": 25,
+      "learned": true,
+      "shown": 3,
+      "examples": 3,
+      "read": 22,
+      "accepted": 12,
+      "right_when_accepted": {
+        "company": 1.0,
+        "address": 0.9167,
+        "date": 1.0,
+        "total": 1.0,
+        "mean": 0.9792
+      },
+      "right_all": {
+        "company": 1.0,
+        "address": 0.8636,
+        "date": 1.0,
+        "total": 0.5455,
+        "mean": 0.8523
+      },
+      "rules": {
+        "company": "constant",
+        "address": "constant",
+        "date": "label BHD",
+        "total": "label CASH"
+      },
+      "fingerprint": 15,
+      "other_stores_accepted": 0
+    }
+  },
+  "with_e5": {
+    "receipts": 145,
+    "sent_to_e5": 22,
+    "field_accuracy": {
+      "company": 0.9793,
+      "address": 0.8552,
+      "date": 0.9931,
+      "total": 0.9103,
+      "mean": 0.9345
+    },
+    "e5_alone": {
+      "company": 0.9724,
+      "address": 0.6483,
+      "date": 1.0,
+      "total": 0.8966,
+      "mean": 0.8793
+    },
+    "e2_alone": {
+      "company": 0.4759,
+      "address": 0.4621,
+      "date": 0.9862,
+      "total": 0.8483,
+      "mean": 0.6931
+    },
+    "seconds_per_receipt": 5.48,
+    "e5_seconds_per_receipt": 20.97
+  }
+}

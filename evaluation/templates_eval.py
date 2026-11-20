@@ -195,6 +195,41 @@ def evaluate(split: str, root: Path, share: float = FINGERPRINT_SHARE, items_che
     }
 
 
+def with_fallback(summary: dict, cache: dict[str, dict], results: Path = RESULTS.parent) -> dict:
+    """The rule set, then E5 for what its gate rejects, on the receipts read;
+    beside E5 and E2 alone on the same receipts.
+
+    E5's and E2's answers are those of their own runs on this split
+    (evaluation/results/e5/receipts.jsonl, chain/e2-<split>.jsonl); nothing is
+    run again. Time: the rule set's OCR (E2's, cached) on every receipt, plus
+    E5's measured time on those sent on.
+    """
+
+    split = summary["split"]
+    e5_path = results / "e5" / "receipts.jsonl"
+    e2_path = results / "chain" / f"e2-{split}.jsonl"
+    if split != "test" or not e5_path.is_file() or not e2_path.is_file():
+        return {}
+    e5 = {row["id"]: row for line in e5_path.open(encoding="utf-8") if (row := json.loads(line))}
+    e2 = {row["id"]: row for line in e2_path.open(encoding="utf-8") if (row := json.loads(line))}
+    e5_seconds = json.loads((results / "e5" / "report.json").read_text(encoding="utf-8"))["seconds_per_receipt"]
+
+    rows = summary["receipts"]
+    chained = [row if row["accepted"] else e5[row["id"]] for row in rows]
+    sent = sum(not row["accepted"] for row in rows)
+    rule_seconds = sum(cache[row["id"]]["seconds"] for row in rows) / len(rows)
+
+    return {
+        "receipts": len(rows),
+        "sent_to_e5": sent,
+        "field_accuracy": _mean(chained),
+        "e5_alone": _mean([e5[row["id"]] for row in rows]),
+        "e2_alone": _mean([e2[row["id"]] for row in rows]),
+        "seconds_per_receipt": round(rule_seconds + e5_seconds * sent / len(rows), 2),
+        "e5_seconds_per_receipt": round(e5_seconds, 2),
+    }
+
+
 def _mean(rows: list[dict]) -> dict:
     if not rows:
         return {}
@@ -216,6 +251,7 @@ def main() -> None:
     if args.ocr:
         run_ocr(args.split, args.root)
     summary = evaluate(args.split, args.root, args.share, args.items_check)
+    summary["with_e5"] = with_fallback(summary, load_cache(args.root, args.split))
     RESULTS.mkdir(parents=True, exist_ok=True)
     # Per receipt, with the labels: kept out of git like every receipts file.
     with (RESULTS / f"{args.split}.receipts.jsonl").open("w", encoding="utf-8", newline="") as file:
