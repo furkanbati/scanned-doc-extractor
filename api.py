@@ -28,6 +28,7 @@ from extractor.schema import DocumentType, doctype_names, load_doctype, save_doc
 from extractor.templates import read as template_read
 from extractor.templates import store as templates
 from extractor.templates.learn import MAX_EXAMPLES, MIN_EXAMPLES, Example, learn, suggest
+from extractor.templates.values import value_from_lines
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 PDF_DPI = 200
@@ -240,6 +241,11 @@ class Suggestion(BaseModel):
     lines: list[Line]
 
 
+class Picked(BaseModel):
+    type: str
+    lines: list[str]
+
+
 class Lesson(BaseModel):
     name: str
     doctype: str = "receipt"
@@ -298,6 +304,14 @@ def template_suggest(request: Suggestion) -> dict:
     lines = [OcrLine(text=line.text, box=tuple(line.box)) for line in request.lines]
 
     return {"fields": suggest(doctype, examples, lines)}
+
+
+@app.post("/templates/value")
+def template_value(picked: Picked) -> dict:
+    """The value in the lines a user picked, as learning will read it: the
+    date or amount in them, or the text after its label."""
+
+    return {"value": value_from_lines(picked.type, picked.lines)}
 
 
 @app.post("/templates/learn")

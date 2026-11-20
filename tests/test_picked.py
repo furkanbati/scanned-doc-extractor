@@ -110,8 +110,11 @@ def test_a_missing_required_value_still_stops_learning():
 
 @pytest.mark.parametrize("kind, picked_lines, value", [
     ("text", ["Fatura No: A-153"], "A-153"),
+    ("text", ["Vergi Dairesi: Selçuk Vergi No: 1234567890"], "1234567890"),
+    ("text", ["Organize Sanayi Bölgesi 5. Cadde No: 12 Konya"], "Organize Sanayi Bölgesi 5. Cadde No: 12 Konya"),
     ("text", ["NO 1, JALAN SAGU", "81200 JOHOR"], "NO 1, JALAN SAGU 81200 JOHOR"),
-    ("text", ["DATE: 12/03 TIME: 10:00"], "12/03 TIME: 10:00"),
+    ("text", ["DATE: 12/03 TIME: 10:00"], "10:00"),
+    ("text", ["Saat 10:30 Masa 4"], "Saat 10:30 Masa 4"),
     ("amount", ["GENEL TOPLAM 1.200,00 TL"], "1.200,00"),
     ("date", ["FATURA TARİHİ: 12.03.2024"], "12.03.2024"),
     ("amount", ["TOPLAM"], None),
