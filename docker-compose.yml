@@ -11,6 +11,11 @@ services:
 
     environment:
       OLLAMA_HOST: ${OLLAMA_HOST:-http://ollama:11434}
+      TEMPLATES_DIR: /data/templates
+
+    # The rule sets users teach (extractor/templates) outlive the container.
+    volumes:
+      - templates:/data/templates
 
     restart: unless-stopped
 
@@ -61,3 +66,4 @@ services:
 
 volumes:
   ollama:
+  templates:
