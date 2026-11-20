@@ -151,7 +151,9 @@ def template_list() -> dict:
 
     return {"templates": templates.names(), "fallback": TEMPLATE_FALLBACK,
             "fallback_available": catalogue.engines()[TEMPLATE_FALLBACK]["available"],
-            "min_examples": MIN_EXAMPLES, "max_examples": MAX_EXAMPLES}
+            "min_examples": MIN_EXAMPLES, "max_examples": MAX_EXAMPLES,
+            # The fields a rule set learns: those of E2's document type.
+            "fields": load_doctype(load_engine("e2")["doctype"]).field_names}
 
 
 @app.post("/templates")
