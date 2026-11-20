@@ -12,6 +12,7 @@ from rapidfuzz import fuzz
 
 from extractor.fields.rules import MONEY
 from extractor.schema import (
+    COMMA_DECIMAL,
     COMPACT_DATE,
     DAY_MONTH_YEAR,
     MONTH_DAY_YEAR,
@@ -65,7 +66,12 @@ def find_values(text: str, kind: str) -> list[Found]:
                 ):
                     found.append(Found(match.start(), match.end(), match.group(), value))
     elif kind == "amount":
+        # "1.250,00" first: read with a decimal point it would be 250.00.
+        for match in COMMA_DECIMAL.finditer(upper):
+            found.append(Found(match.start(), match.end(), match.group(), normalize_amount(match.group())))
         for match in MONEY.finditer(upper):
+            if any(match.start() < other.end and other.start < match.end() for other in found):
+                continue
             whole, cents = match.groups()
             found.append(Found(match.start(), match.end(), match.group(), f"{int(whole.replace(',', ''))}.{cents}"))
 
