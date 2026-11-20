@@ -15,6 +15,7 @@ from functools import lru_cache
 import pypdfium2
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from PIL import Image, UnidentifiedImageError
+from pydantic import BaseModel, Field
 
 import catalogue
 import local_model
@@ -22,10 +23,11 @@ from extractor.gate import decide
 from extractor.locate import locate_fields
 from extractor.pipeline import Pipeline, build_pipeline, build_template_pipeline, load_engine
 from extractor.review import review_notes
-from extractor.schema import load_doctype
+from extractor.ocr.base import OcrLine
+from extractor.schema import DocumentType, doctype_names, load_doctype, save_doctype
 from extractor.templates import read as template_read
 from extractor.templates import store as templates
-from extractor.templates.learn import MAX_EXAMPLES, MIN_EXAMPLES, Example, learn
+from extractor.templates.learn import MAX_EXAMPLES, MIN_EXAMPLES, Example, learn, suggest
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 PDF_DPI = 200
@@ -42,6 +44,21 @@ def get_pipeline(method: str) -> Pipeline:
     config = load_engine(method)
 
     return build_pipeline(config, load_doctype(config["doctype"]))
+
+
+@lru_cache(maxsize=16)
+def get_typed_pipeline(method: str, doctype: str) -> Pipeline:
+    """An engine reading another document type than its own (E5 behind a
+    rule set for invoices)."""
+
+    return build_pipeline(load_engine(method), load_doctype(doctype))
+
+
+def pipeline_for(method: str, doctype: str | None) -> Pipeline:
+    if doctype is None or doctype == load_engine(method)["doctype"]:
+        return get_pipeline(method)
+
+    return get_typed_pipeline(method, doctype)
 
 
 @lru_cache(maxsize=16)
@@ -196,6 +213,113 @@ async def template_create(
         image, _ = read_document(data)
         examples.append(Example(ocr.read(image), doctype.values(fields)))
 
+    return learned_answer(name, doctype, examples, replace)
+
+
+class Line(BaseModel):
+    text: str
+    box: list[int]
+
+
+class TaughtExample(BaseModel):
+    """An example as the UI holds it: OCR lines from /ocr, the confirmed
+    values, and the lines picked per field (indexes into `lines`)."""
+
+    lines: list[Line]
+    values: dict[str, str | None] = Field(default_factory=dict)
+    picked: dict[str, list[int]] = Field(default_factory=dict)
+
+    def example(self, doctype: DocumentType) -> Example:
+        return Example([OcrLine(text=line.text, box=tuple(line.box)) for line in self.lines],
+                       doctype.values(self.values), {k: v for k, v in self.picked.items() if v})
+
+
+class Suggestion(BaseModel):
+    doctype: str
+    examples: list[TaughtExample]
+    lines: list[Line]
+
+
+class Lesson(BaseModel):
+    name: str
+    doctype: str = "receipt"
+    examples: list[TaughtExample]
+    replace: bool = False
+
+
+def doctype_or_404(name: str) -> DocumentType:
+    try:
+        return load_doctype(name)
+    except FileNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error))
+
+
+@app.post("/ocr")
+async def ocr(file: UploadFile = File(...)) -> dict:
+    """E2's OCR lines and boxes, numbered in reading order: the lines a user
+    picks each field's value from when teaching a rule set."""
+
+    data = await file.read()
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File larger than 10 MB")
+    image, pages = read_document(data)
+    lines = get_pipeline("e2").ocr.read(image)
+
+    return {"lines": [{"text": line.text, "box": list(line.box)} for line in lines],
+            "image_size": list(image.size), "pages": pages}
+
+
+@app.get("/doctypes")
+def doctype_list() -> dict:
+    """The document types: the project's own and the ones users defined."""
+
+    return {"doctypes": doctype_names()}
+
+
+@app.post("/doctypes")
+def doctype_create(doctype: DocumentType, replace: bool = False) -> dict:
+    try:
+        save_doctype(doctype, replace=replace)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
+    except FileExistsError as error:
+        raise HTTPException(status_code=409, detail=str(error))
+
+    return {"saved": doctype.name}
+
+
+@app.post("/templates/suggest")
+def template_suggest(request: Suggestion) -> dict:
+    """Per field, the lines and value the examples so far point to on a new
+    example; the user then only checks them."""
+
+    doctype = doctype_or_404(request.doctype)
+    examples = [example.example(doctype) for example in request.examples]
+    lines = [OcrLine(text=line.text, box=tuple(line.box)) for line in request.lines]
+
+    return {"fields": suggest(doctype, examples, lines)}
+
+
+@app.post("/templates/learn")
+def template_learn(lesson: Lesson) -> dict:
+    """Learn and save a rule set from examples with their OCR lines and the
+    lines picked per field (as /ocr and /templates/suggest gave them)."""
+
+    try:
+        templates.slug(lesson.name)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
+    if not MIN_EXAMPLES <= len(lesson.examples) <= MAX_EXAMPLES:
+        raise HTTPException(status_code=400, detail=f"Send {MIN_EXAMPLES} to {MAX_EXAMPLES} examples of the same format")
+    if templates.path(lesson.name).exists() and not lesson.replace:
+        raise HTTPException(status_code=409, detail=f"A rule set named {lesson.name!r} already exists")
+    doctype = doctype_or_404(lesson.doctype)
+
+    return learned_answer(lesson.name, doctype, [example.example(doctype) for example in lesson.examples],
+                          lesson.replace)
+
+
+def learned_answer(name: str, doctype: DocumentType, examples: list[Example], replace: bool) -> dict:
     learned = learn(name, doctype, examples)
     if learned.template is None:
         return {
@@ -209,7 +333,9 @@ async def template_create(
     get_template_pipeline.cache_clear()
     slug = templates.slug(name)
 
-    return {"status": "saved", "file": slug, "template": templates.names()[slug]}
+    return {"status": "saved", "file": slug, "template": templates.names()[slug],
+            # Optional fields too few examples printed: read by no rule.
+            "skipped": learned.skipped}
 
 
 @app.delete("/templates/{name}")
@@ -239,10 +365,12 @@ async def extract(
 
     # Each engine's gate decides whether its result stands or the document goes
     # to the next engine; the last engine's result stands either way.
+    # With a rule set, every engine reads its document type (E5 an invoice).
+    doctype = templates.load(template)["doctype"] if template else None
     answer, chain, failure = None, [], None
     for number, step in enumerate(steps, start=1):
         try:
-            result = run_engine(step, image)
+            result = run_engine(step, image, doctype)
         except Exception as error:
             failure = f"Extraction failed: {error}"
             chain.append({"method": step, "seconds": None, "usd": None, "accepted": None,
@@ -292,18 +420,22 @@ def template_warning(chain: list[dict], answered_by: str) -> str | None:
     return f"The rule set did not fit this document ({why}). E5 is not available here: check the result."
 
 
-def run_engine(method: str, image: Image.Image) -> dict:
-    """One engine's result on the image, with its checks and gate decision."""
+def run_engine(method: str, image: Image.Image, doctype_name: str | None = None) -> dict:
+    """One engine's result on the image, with its checks and gate decision.
+
+    `doctype_name`: read this document type instead of the engine's own.
+    """
 
     template = None
     if method.startswith(TEMPLATE):
         name = method[len(TEMPLATE):]
         template, pipeline = get_template_pipeline(name, templates.path(name).stat().st_mtime)
         config = load_engine("e2")
+        doctype = load_doctype(template["doctype"])
     else:
         config = load_engine(method)
-        pipeline = get_pipeline(method)
-    doctype = load_doctype(config["doctype"])
+        pipeline = pipeline_for(method, doctype_name)
+        doctype = load_doctype(doctype_name or config["doctype"])
 
     start = time.perf_counter()
     result = pipeline.run(image)
