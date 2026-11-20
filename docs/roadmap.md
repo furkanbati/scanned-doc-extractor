@@ -37,9 +37,14 @@ section.
 
 ## Fields and data
 
-9. **Header-field rules are Malaysian.** On Indonesian receipts nearly every
-   receipt gets "date not found", and the gate rejects it for that.
-10. **Keywords live in code.** Move them to one YAML file per language.
+9. **The general header-field rules are Malaysian.** On Indonesian receipts
+   nearly every receipt gets "date not found", and the gate rejects it for
+   that. In the UI they now run only in the private mode until its local model
+   is set up, and behind the scenes (picking a receipt's first example when a
+   rule set is taught); E2 reads with rule sets learned from the user's
+   examples, which take labels in any language.
+10. **The general rules' keywords live in code.** Move them to one YAML file
+    per language.
 11. **E3 is measured with the line-item prompt** (SROIE fields 0.801, CORD
     line items in reports/cord_e3_line_items.md); its fields-only numbers stay
     as a comment in e3.yaml. Not measured: E4 with line items (item 1).
