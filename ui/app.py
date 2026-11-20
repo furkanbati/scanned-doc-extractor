@@ -5,14 +5,13 @@ Run with `streamlit run ui/app.py`; set API_URL to point at the API.
 
 import hashlib
 import io
-import json
 import os
 
 import pandas
 import pypdfium2
 import requests
 import streamlit as st
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
 from export import columns, line_item_rows, result_rows, to_csv, to_json, to_xlsx
 
@@ -207,15 +206,88 @@ SAME_FORMAT = ("A rule set reads **one format**: documents laid out alike, such 
                "in a few seconds at no cost. Documents it cannot read go to E5, the local model, and are "
                "marked for a check. If your documents come in many different layouts, choose E3 (cloud) or, "
                "to keep them on this computer, E5 (the private mode) instead.")
+FIELD_TYPES = ["text", "date", "amount"]
+
+
+def api_post(path: str, timeout: int = 60, **kwargs) -> dict:
+    response = requests.post(f"{API_URL}{path}", timeout=timeout, **kwargs)
+    if response.status_code != 200:
+        try:
+            detail = response.json().get("detail", response.text)
+        except ValueError:
+            detail = response.text
+        raise RuntimeError(detail)
+
+    return response.json()
+
+
+def load_doctypes() -> dict:
+    try:
+        response = requests.get(f"{API_URL}/doctypes", timeout=10)
+        response.raise_for_status()
+    except requests.RequestException:
+        return {}
+
+    return response.json()["doctypes"]
+
+
+def draw_lines(image: Image.Image, lines: list[dict], picked: dict[str, list[int]]) -> Image.Image:
+    """Every OCR line boxed and numbered; the picked ones in their field's colour."""
+
+    canvas = image.convert("RGB")
+    draw = ImageDraw.Draw(canvas)
+    width = max(1, canvas.width // 500)
+    size = max(12, canvas.width // 60)
+    try:
+        font = ImageFont.load_default(size=size)
+    except TypeError:  # Pillow before 10.1: one small bitmap font
+        font = ImageFont.load_default()
+    colour_of = {index: COLOURS[position % len(COLOURS)]
+                 for position, indexes in enumerate(picked.values()) for index in indexes}
+    for index, line in enumerate(lines):
+        box = line["box"]
+        colour = colour_of.get(index, "#9ca3af")
+        draw.polygon(list(zip(box[0::2], box[1::2])), outline=colour, width=width * (3 if index in colour_of else 1))
+        draw.text((max(0, min(box[0::2]) - size * 2), min(box[1::2])), str(index), fill="#dc2626", font=font)
+
+    return canvas
+
+
+def new_doctype_form() -> None:
+    """Define a document type of your own: its fields, their kinds, which may be missing."""
+
+    with st.expander("Define a new document type"):
+        name = st.text_input("Type name (lower case, e.g. purchase_order)", key="new_type_name")
+        description = st.text_input("What the document is", key="new_type_description",
+                                    help="E5 reads this when it reads a document the rule set cannot.")
+        fields = st.data_editor(
+            pandas.DataFrame([{"name": "", "type": "text", "optional": False, "description": ""}]),
+            num_rows="dynamic", hide_index=True, width="stretch", key="new_type_fields",
+            column_config={"type": st.column_config.SelectboxColumn("type", options=FIELD_TYPES, required=True),
+                           "optional": st.column_config.CheckboxColumn("optional")},
+        )
+        if st.button("Save the document type", disabled=not name):
+            rows = [row for row in fields.to_dict("records") if (row.get("name") or "").strip()]
+            spec = {"name": name.strip(), "description": description,
+                    "fields": [{"name": row["name"].strip(), "type": row["type"] or "text",
+                                "optional": bool(row.get("optional")), "description": row.get("description") or ""}
+                               for row in rows]}
+            try:
+                api_post("/doctypes", json=spec)
+            except (requests.RequestException, RuntimeError) as error:
+                st.error(str(error))
+                return
+            st.session_state.chosen_type = spec["name"]
+            st.rerun()
 
 
 def rule_sets_page() -> None:
-    """Teach a rule set from a few documents of one format; list and delete them."""
+    """Teach a rule set by picking, on each example, the OCR lines of each field."""
 
     st.subheader("Rule sets for documents of one format")
     st.markdown(SAME_FORMAT)
     saved = load_templates()
-    fields = saved["fields"]
+    doctypes = load_doctypes()
     if "rule_set_saved" in st.session_state:
         st.success(f"Saved the rule set {st.session_state.pop('rule_set_saved')!r}. Choose it under "
                    "Extract → Advanced → Read with one of my rule sets.")
@@ -224,42 +296,23 @@ def rule_sets_page() -> None:
 
     with st.container(border=True):
         st.markdown("**New rule set**")
-        name = st.text_input("Name", placeholder="e.g. ABC Supplies invoices")
+        names = list(doctypes) or ["receipt"]
+        wanted = st.session_state.get("chosen_type")
+        doctype = st.selectbox("Document type", names, index=names.index(wanted) if wanted in names else 0,
+                               format_func=lambda key: f"{key} ({', '.join(f['name'] for f in doctypes[key]['fields'])})"
+                               if key in doctypes else key)
+        new_doctype_form()
+        name = st.text_input("Rule set name", placeholder="e.g. ABC Supplies invoices")
         low, high = saved["min_examples"], saved["max_examples"]
         uploads = st.file_uploader(f"{low} to {high} documents of the same format", type=["jpg", "jpeg", "png", "pdf"],
                                    accept_multiple_files=True, key="teach_files")
-        if not uploads:
-            st.caption(f"Add {low} documents; more help when one of them differs a little (a rounding line, "
-                       "a longer address).")
-        elif not low <= len(uploads) <= high:
-            st.caption(f"Add {low} to {high} documents; {len(uploads)} added.")
+        if not uploads or not low <= len(uploads) <= high:
+            st.caption(f"Add {low} to {high} documents of this format"
+                       + (f"; {len(uploads)} added." if uploads else ". Varied ones help: one with a rounding "
+                          "line, a longer address."))
         else:
-            documents = [(upload.name, upload.getvalue()) for upload in uploads]
-            key = hashlib.sha1(repr([file_key(n, d) for n, d in documents]).encode()).hexdigest()[:12]
-            prefilled = st.session_state.setdefault("teach_prefill", {})
-            if key not in prefilled:
-                if st.button("Read the examples", type="primary"):
-                    rows = []
-                    with st.spinner("Reading the examples with E2 to fill in the values..."):
-                        for file, data in documents:
-                            try:
-                                found = extract(data, file, ("method", "e2"))["fields"]
-                            except (requests.RequestException, RuntimeError):
-                                found = {}
-                            rows.append({"file": file, **{field: found.get(field) for field in fields}})
-                    prefilled[key] = rows
-                    st.rerun()
-                st.caption("E2 reads each example first; you only correct what it got wrong.")
-            else:
-                st.caption("Check every value and correct it: the rule set learns where each value is printed "
-                           "from these. A value that is not on the document stays empty.")
-                table = st.data_editor(pandas.DataFrame(prefilled[key]), disabled=["file"], hide_index=True,
-                                       width="stretch", key="teach-" + key)
-                confirmed = table.astype(object).where(table.notna(), None).to_dict("records")
-                replace = name and any(info["name"] == name for info in saved["templates"].values()) and \
-                    st.checkbox(f"Replace the rule set named {name!r}")
-                if st.button("Learn the rule set", type="primary", disabled=not name.strip()):
-                    learn_rule_set(name.strip(), documents, confirmed, fields, bool(replace))
+            teach_examples(name.strip(), doctype, doctypes.get(doctype, {"fields": []})["fields"],
+                           [(upload.name, upload.getvalue()) for upload in uploads])
 
     st.markdown("**Saved rule sets**")
     if not saved["templates"]:
@@ -267,33 +320,142 @@ def rule_sets_page() -> None:
     for file, info in saved["templates"].items():
         columns_ = st.columns([4, 1])
         rules = ", ".join(f"{field}: {kind}" for field, kind in info["fields"].items())
-        columns_[0].markdown(f"**{info['name']}** · {info['examples']} examples · {info['created']}  \n"
-                             f"<span style='opacity:0.7'>{rules}</span>", unsafe_allow_html=True)
+        columns_[0].markdown(f"**{info['name']}** · {info['doctype']} · {info['examples']} examples · "
+                             f"{info['created']}  \n<span style='opacity:0.7'>{rules}</span>", unsafe_allow_html=True)
         if columns_[1].button("Delete", key="delete-" + file):
             requests.delete(f"{API_URL}/templates/{file}", timeout=10)
             st.rerun()
 
 
-def learn_rule_set(name: str, documents: list, confirmed: list[dict], fields: list[str], replace: bool) -> None:
-    values = [{field: row.get(field) for field in fields} for row in confirmed]
-    try:
-        response = requests.post(
-            f"{API_URL}/templates",
-            data={"name": name, "values": json.dumps(values), "replace": str(replace).lower()},
-            files=[("files", (file, data)) for file, data in documents],
-            timeout=300,
-        )
-    except requests.RequestException as error:
-        st.error(f"Could not reach the service: {error}")
-        return
-    if response.status_code != 200:
-        st.error(response.json().get("detail", response.text))
+def teach_examples(name: str, doctype: str, fields: list[dict], documents: list[tuple[str, bytes]]) -> None:
+    """One example at a time: pick each field's lines, check the value, go on."""
+
+    key = hashlib.sha1(repr([doctype, *(file_key(n, d) for n, d in documents)]).encode()).hexdigest()[:12]
+    state = st.session_state.setdefault("teach", {})
+    if state.get("key") != key:
+        state.clear()
+        state.update(key=key, current=0, ocr=None, examples=[{"values": {}, "picked": {}} for _ in documents])
+    if state["ocr"] is None:
+        if st.button("Read the examples", type="primary"):
+            with st.spinner("Reading the text on each example..."):
+                try:
+                    state["ocr"] = [api_post("/ocr", files={"file": (n, d)})["lines"] for n, d in documents]
+                except (requests.RequestException, RuntimeError) as error:
+                    st.error(f"Could not read the examples: {error}")
+                    return
+                if doctype == "receipt":
+                    prefill_receipt(state, documents)
+            st.rerun()
+        st.caption("The OCR finds every line of text on each example and numbers it; you pick the lines "
+                   "each field is printed on.")
         return
 
-    body = response.json()
+    current = state["current"]
+    file, data = documents[current]
+    lines = state["ocr"][current]
+    example = state["examples"][current]
+    st.markdown(f"**Example {current + 1} of {len(documents)}: {file}**")
+    if current == 0 and not example["picked"]:
+        st.caption("Pick the line(s) of each field. The next examples come with them picked; you only check.")
+
+    left, right = st.columns([1, 1])
+    options = list(range(len(lines)))
+    label = lambda index: f"{index} · {lines[index]['text']}"
+    for field in fields:
+        with right:
+            picked = example["picked"].get(field["name"], [])
+            title = field["name"] + (" (optional)" if field.get("optional") else "")
+            if field["type"] == "text":
+                chosen = st.multiselect(title, options, default=[i for i in picked if i in options],
+                                        format_func=label, key=f"pick-{key}-{current}-{field['name']}")
+            else:
+                choice = st.selectbox(title, [None, *options], index=(picked[0] + 1) if picked else 0,
+                                      format_func=lambda i: "(not on this document)" if i is None else label(i),
+                                      key=f"pick-{key}-{current}-{field['name']}")
+                chosen = [] if choice is None else [choice]
+            if chosen != picked:
+                example["picked"][field["name"]] = chosen
+                example["values"][field["name"]] = picked_value(field["type"], [lines[i]["text"] for i in chosen])
+            if chosen:
+                value = st.text_input(f"{field['name']} value", example["values"].get(field["name"]) or "",
+                                      key=f"value-{key}-{current}-{field['name']}-{chosen}",
+                                      label_visibility="collapsed")
+                example["values"][field["name"]] = value or None
+    with left:
+        st.image(draw_lines(open_document(data), lines, example["picked"]),
+                 caption="Every OCR line, numbered; the picked ones in their field's colour")
+
+    back, forward = st.columns(2)
+    if current > 0 and back.button("← Previous example"):
+        state["current"] -= 1
+        st.rerun()
+    if current + 1 < len(documents):
+        if forward.button("Next example →", type="primary"):
+            state["current"] += 1
+            suggest_next(state, doctype)
+            st.rerun()
+    elif forward.button("Learn the rule set", type="primary", disabled=not name):
+        learn_rule_set(name, doctype, state, documents)
+    if not name:
+        st.caption("Give the rule set a name to learn it.")
+
+
+def picked_value(kind: str, texts: list[str]) -> str | None:
+    if not texts:
+        return None
+    try:
+        return api_post("/templates/value", json={"type": kind, "lines": texts}, timeout=10)["value"]
+    except (requests.RequestException, RuntimeError):
+        return " ".join(texts)
+
+
+def prefill_receipt(state: dict, documents: list[tuple[str, bytes]]) -> None:
+    """On receipts E2 knows the fields: the first example comes with its lines picked."""
+
+    file, data = documents[0]
+    try:
+        result = extract(data, file, ("method", "e2"))
+    except (requests.RequestException, RuntimeError):
+        return
+    example = state["examples"][0]
+    for field, indexes in result["field_lines"].items():
+        if indexes and result["fields"].get(field):
+            example["picked"][field] = indexes
+            example["values"][field] = result["fields"][field]
+
+
+def suggest_next(state: dict, doctype: str) -> None:
+    """Pick the lines of the example now shown from the ones before it, where
+    the user has not picked them yet."""
+
+    current = state["current"]
+    example = state["examples"][current]
+    if example["picked"]:
+        return
+    earlier = [{"lines": state["ocr"][i], **state["examples"][i]} for i in range(current)]
+    try:
+        found = api_post("/templates/suggest", json={"doctype": doctype, "examples": earlier,
+                                                      "lines": state["ocr"][current]})["fields"]
+    except (requests.RequestException, RuntimeError):
+        return
+    for field, suggestion in found.items():
+        example["picked"][field] = suggestion["lines"]
+        example["values"][field] = suggestion["value"]
+
+
+def learn_rule_set(name: str, doctype: str, state: dict, documents: list, replace: bool = False) -> None:
+    examples = [{"lines": lines, **example} for lines, example in zip(state["ocr"], state["examples"])]
+    try:
+        body = api_post("/templates/learn", timeout=120, json={"name": name, "doctype": doctype,
+                                                                "examples": examples, "replace": replace})
+    except (requests.RequestException, RuntimeError) as error:
+        st.error(str(error))
+        return
+
     if body["status"] == "saved":
         # Shown after the rerun, which also lists the new rule set.
         st.session_state.rule_set_saved = name
+        st.session_state.teach = {}
         st.rerun()
 
     st.warning("The examples do not agree yet, so nothing was saved.")
@@ -301,9 +463,9 @@ def learn_rule_set(name: str, documents: list, confirmed: list[dict], fields: li
         misfit = body["misfits"].get(field)
         if misfit:
             st.markdown(f"- **{field}**: example {misfit} ({documents[misfit - 1][0]}) is laid out differently "
-                        "from the others. Replace it with another document, or check its value.")
+                        "from the others. Replace it with another document, or check its lines.")
         else:
-            st.markdown(f"- **{field}**: {why}. Add another example, or check the values.")
+            st.markdown(f"- **{field}**: {why}. Check the lines picked for it, or add another example.")
 
 
 def describe(measured: dict | None) -> str:

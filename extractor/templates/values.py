@@ -81,8 +81,9 @@ def find_values(text: str, kind: str) -> list[Found]:
 
 def value_from_lines(kind: str, lines: list[str]) -> str | None:
     """The value in lines a person picked: the first date or amount in them,
-    or for text the lines joined, without a label ending in ":" before it
-    ("Fatura No: A-153" -> "A-153")."""
+    or for text the lines joined, without a short label ending in ":" before
+    it ("Fatura No: A-153" -> "A-153"; "Vergi Dairesi: Selçuk Vergi No: 123"
+    -> "123"; an address "Cadde No: 12 Konya" keeps its words)."""
 
     if not lines:
         return None
@@ -94,9 +95,12 @@ def value_from_lines(kind: str, lines: list[str]) -> str | None:
         return None
 
     first, rest = lines[0], lines[1:]
-    if ":" in first:
-        label, after = first.split(":", 1)
-        if after.strip() and len(words(label)) <= 4:
+    # A label is words before a colon ("No:"), not the colon of a time (10:00).
+    colons = [match.end() for match in re.finditer(r"[^\W\d_]\s*:", first)]
+    if colons:
+        label = first[colons[-2] if len(colons) > 1 else 0:colons[-1]]
+        after = first[colons[-1]:]
+        if after.strip() and len(words(label)) <= 3:
             first = after
     text = " ".join([first.strip(), *(line.strip() for line in rest)]).strip()
 

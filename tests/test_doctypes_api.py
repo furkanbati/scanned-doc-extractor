@@ -137,3 +137,12 @@ def test_unknown_document_types_and_too_few_examples_are_refused(client):
     assert client.post("/templates/suggest", json={"doctype": "nope", "examples": [], "lines": []}).status_code == 404
     lesson = {"name": "x", "doctype": "invoice", "examples": [example(EXAMPLES[0])]}
     assert client.post("/templates/learn", json=lesson).status_code == 400
+
+
+def test_the_value_of_picked_lines_is_read_as_learning_reads_it(client):
+    def value(kind, *lines):
+        return client.post("/templates/value", json={"type": kind, "lines": list(lines)}).json()["value"]
+
+    assert value("text", "FATURA NO: A-2024-0153") == "A-2024-0153"
+    assert value("amount", "GENEL TOPLAM 1.200,00") == "1.200,00"
+    assert value("date", "TOPLAM") is None
