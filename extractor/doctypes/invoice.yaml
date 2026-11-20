@@ -1,0 +1,29 @@
+name: invoice
+description: >-
+  An invoice from a supplier: who issued it, its number and date, and the
+  amounts it asks for. Amounts may use a decimal comma (1.250,00).
+fields:
+  - name: company
+    type: text
+    description: Name of the business that issued the invoice, as printed at the top.
+  - name: tax_id
+    type: text
+    description: The issuer's tax number (VKN, VAT number), digits and letters only.
+    optional: true
+  - name: invoice_number
+    type: text
+    description: The invoice's own number or serial, without its label.
+  - name: date
+    type: date
+    description: Date the invoice was issued.
+  - name: subtotal
+    type: amount
+    description: Amount before tax.
+    optional: true
+  - name: tax
+    type: amount
+    description: Tax amount (VAT, KDV).
+    optional: true
+  - name: total
+    type: amount
+    description: Total amount to pay, tax included.
