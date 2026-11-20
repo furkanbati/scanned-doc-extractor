@@ -5,6 +5,7 @@ Run with `streamlit run ui/app.py`; set API_URL to point at the API.
 
 import hashlib
 import io
+import json
 import os
 
 import pandas
@@ -188,6 +189,123 @@ def draw_fields(image: Image.Image, result: dict) -> Image.Image:
     return canvas
 
 
+def load_templates() -> dict:
+    """The saved rule sets (api.py /templates), or none if the API is older."""
+
+    try:
+        response = requests.get(f"{API_URL}/templates", timeout=10)
+        response.raise_for_status()
+    except requests.RequestException:
+        return {"templates": {}, "fallback_available": False, "min_examples": 3, "max_examples": 6,
+                "fields": ["company", "address", "date", "total"]}
+
+    return response.json()
+
+
+SAME_FORMAT = ("A rule set reads **one format**: documents laid out alike, such as one supplier's invoices. "
+               "It is learned from your examples on this server, without a model, and reads each document "
+               "in a few seconds at no cost. Documents it cannot read go to E5, the local model, and are "
+               "marked for a check. If your documents come in many different layouts, choose E3 (cloud) or, "
+               "to keep them on this computer, E5 (the private mode) instead.")
+
+
+def rule_sets_page() -> None:
+    """Teach a rule set from a few documents of one format; list and delete them."""
+
+    st.subheader("Rule sets for documents of one format")
+    st.markdown(SAME_FORMAT)
+    saved = load_templates()
+    fields = saved["fields"]
+    if "rule_set_saved" in st.session_state:
+        st.success(f"Saved the rule set {st.session_state.pop('rule_set_saved')!r}. Choose it under "
+                   "Extract → Advanced → Read with one of my rule sets.")
+    if not saved["fallback_available"]:
+        st.warning("E5 is not set up here, so documents a rule set cannot read are only marked for a check.")
+
+    with st.container(border=True):
+        st.markdown("**New rule set**")
+        name = st.text_input("Name", placeholder="e.g. ABC Supplies invoices")
+        low, high = saved["min_examples"], saved["max_examples"]
+        uploads = st.file_uploader(f"{low} to {high} documents of the same format", type=["jpg", "jpeg", "png", "pdf"],
+                                   accept_multiple_files=True, key="teach_files")
+        if not uploads:
+            st.caption(f"Add {low} documents; more help when one of them differs a little (a rounding line, "
+                       "a longer address).")
+        elif not low <= len(uploads) <= high:
+            st.caption(f"Add {low} to {high} documents; {len(uploads)} added.")
+        else:
+            documents = [(upload.name, upload.getvalue()) for upload in uploads]
+            key = hashlib.sha1(repr([file_key(n, d) for n, d in documents]).encode()).hexdigest()[:12]
+            prefilled = st.session_state.setdefault("teach_prefill", {})
+            if key not in prefilled:
+                if st.button("Read the examples", type="primary"):
+                    rows = []
+                    with st.spinner("Reading the examples with E2 to fill in the values..."):
+                        for file, data in documents:
+                            try:
+                                found = extract(data, file, ("method", "e2"))["fields"]
+                            except (requests.RequestException, RuntimeError):
+                                found = {}
+                            rows.append({"file": file, **{field: found.get(field) for field in fields}})
+                    prefilled[key] = rows
+                    st.rerun()
+                st.caption("E2 reads each example first; you only correct what it got wrong.")
+            else:
+                st.caption("Check every value and correct it: the rule set learns where each value is printed "
+                           "from these. A value that is not on the document stays empty.")
+                table = st.data_editor(pandas.DataFrame(prefilled[key]), disabled=["file"], hide_index=True,
+                                       width="stretch", key="teach-" + key)
+                confirmed = table.astype(object).where(table.notna(), None).to_dict("records")
+                replace = name and any(info["name"] == name for info in saved["templates"].values()) and \
+                    st.checkbox(f"Replace the rule set named {name!r}")
+                if st.button("Learn the rule set", type="primary", disabled=not name.strip()):
+                    learn_rule_set(name.strip(), documents, confirmed, fields, bool(replace))
+
+    st.markdown("**Saved rule sets**")
+    if not saved["templates"]:
+        st.caption("None yet.")
+    for file, info in saved["templates"].items():
+        columns_ = st.columns([4, 1])
+        rules = ", ".join(f"{field}: {kind}" for field, kind in info["fields"].items())
+        columns_[0].markdown(f"**{info['name']}** · {info['examples']} examples · {info['created']}  \n"
+                             f"<span style='opacity:0.7'>{rules}</span>", unsafe_allow_html=True)
+        if columns_[1].button("Delete", key="delete-" + file):
+            requests.delete(f"{API_URL}/templates/{file}", timeout=10)
+            st.rerun()
+
+
+def learn_rule_set(name: str, documents: list, confirmed: list[dict], fields: list[str], replace: bool) -> None:
+    values = [{field: row.get(field) for field in fields} for row in confirmed]
+    try:
+        response = requests.post(
+            f"{API_URL}/templates",
+            data={"name": name, "values": json.dumps(values), "replace": str(replace).lower()},
+            files=[("files", (file, data)) for file, data in documents],
+            timeout=300,
+        )
+    except requests.RequestException as error:
+        st.error(f"Could not reach the service: {error}")
+        return
+    if response.status_code != 200:
+        st.error(response.json().get("detail", response.text))
+        return
+
+    body = response.json()
+    if body["status"] == "saved":
+        # Shown after the rerun, which also lists the new rule set.
+        st.session_state.rule_set_saved = name
+        st.rerun()
+
+    st.warning("The examples do not agree yet, so nothing was saved.")
+    for field, why in body["unstable"].items():
+        misfit = body["misfits"].get(field)
+        if misfit:
+            st.markdown(f"- **{field}**: example {misfit} ({documents[misfit - 1][0]}) is laid out differently "
+                        "from the others. Replace it with another document, or check its value.")
+        else:
+            st.markdown(f"- **{field}**: {why}. Add another example, or check the values.")
+
+
 def describe(measured: dict | None) -> str:
     if not measured:
         return "Not measured yet."
@@ -239,6 +357,13 @@ if st.session_state.pop("just_ready", False) and not needs_setup:
     st.toast("The local model is ready: the private mode now runs E5.")
 
 with st.sidebar:
+    page = st.radio("Page", ["Extract", "Rule sets"], horizontal=True, label_visibility="collapsed")
+
+if page == "Rule sets":
+    rule_sets_page()
+    st.stop()
+
+with st.sidebar:
     st.header("Mode")
     profile = st.radio(
         "Mode",
@@ -278,6 +403,16 @@ with st.sidebar:
             choice = ("method", method)
             available, reason, leaves = engine["available"], engine["unavailable_reason"], engine["leaves_machine"]
             measured = engine["measured"]
+
+        saved = load_templates()["templates"]
+        if saved and st.checkbox("Read with one of my rule sets"):
+            file = st.selectbox("Rule set", list(saved), format_func=lambda key: saved[key]["name"])
+            st.caption("Only for documents of the format it was taught; the others go to E5 and are marked "
+                       "for a check. Free, on this server.")
+            choice = ("template", file)
+            available, reason, leaves, measured = True, None, False, None
+        elif not saved:
+            st.caption("Rule sets for documents of one format: see the Rule sets page.")
 
         st.markdown("**Planned providers**")
         for provider in catalogue["planned"]:
@@ -435,13 +570,17 @@ with right:
         if sums:
             st.caption(" · ".join(sums))
         gate = result.get("gate")
+        # A rule set's gate checks the fields, not the items: their own reasons stand.
         item_reasons = ([reason.removeprefix("line items: ") for reason in gate["reasons"] if reason.startswith("line items: ")]
-                        if gate is not None else line_items["reasons"] if line_items["needs_review"] else [])
+                        if gate is not None and not result.get("template")
+                        else line_items["reasons"] if line_items["needs_review"] else [])
         if item_reasons:
             st.warning("Check the items: " + "; ".join(item_reasons))
-        if gate is not None and gate["accepted"]:
+        if gate is not None and gate["accepted"] and not item_reasons:
             st.success("Every check passed: accepted without a look.")
 
+    if result.get("warning"):
+        st.warning(result["warning"])
     chain = result.get("chain", [])
     if len(chain) > 1:
         answered = [step for step in chain if not step["error"]][-1]
@@ -450,7 +589,8 @@ with right:
                  for step in chain if step is not answered]
         last = f"{answered['method']} answered" + ("" if answered["accepted"] else ", but not every check passed")
         st.caption("Engines tried: " + " → ".join(steps + [last]))
-    facts = [f"{result['seconds']:.1f} s", f"engine {result['method']}"]
+    engine_name = f"rule set {result['template']}" if result.get("template") else f"engine {result['method']}"
+    facts = [f"{result['seconds']:.1f} s", engine_name]
     if result["usd"] is not None:
         facts.append(f"${result['usd']:.5f}")
     if result["usage"]:

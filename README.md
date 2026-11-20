@@ -41,6 +41,27 @@ The modes are defined in [profiles.yaml](profiles.yaml); the numbers next to the
 are read from the evaluation reports. Under *Advanced* any engine (e1 ... e5) can be
 chosen directly, and the providers not built yet are listed as planned.
 
+## Rule sets for documents of one format
+
+If the same format comes in again and again (one supplier's invoices), teach a
+rule set on the UI's *Rule sets* page: give it a name and three documents of
+that format, correct the values E2 fills in, and the code learns where each
+value is printed. No model, no cost, nothing leaves the machine. Then choose it
+under *Advanced* when extracting: each document takes a few seconds, and those
+it does not fit go to E5 and are marked "rule set did not fit". When the
+examples disagree, the page says which example to replace or which value to
+check.
+
+On the 13 SROIE stores it learned (test split), the rule set accepted 85% of
+the stores' other receipts, with 0.959 of their fields right. With E5 reading
+the rest, 0.935 against 0.879 for E5 alone, at 5.5 s per receipt instead of 21 s.
+It never accepted a receipt of another store
+([reports/templates.md](reports/templates.md)).
+
+A rule set reads one layout. For documents in many layouts, use E3 or, to keep
+them local, E5. Rule sets are saved as YAML in `templates/` (in Docker, on a
+volume); they are the user's data and stay out of git.
+
 ## Private mode on a GPU
 
 The local model runs wherever the Ollama server runs. `docker compose up` starts
@@ -137,9 +158,16 @@ GET  /profiles                 modes, whether each can run here, measured accura
 GET  /methods                  every engine (e1 ... e5) with the same details
 POST /extract  file            image or PDF; optional profile=accurate|private
                [profile|method]  or method=e1...e5 (default: the default mode)
+               [template]        or template=<rule set>: read with it, E5 for what it cannot
                -> fields, normalized fields, fields to check, OCR lines and boxes,
                   the lines behind each field, line items (e2, e5; null otherwise),
-                  seconds, tokens, USD, page count
+                  seconds, tokens, USD, page count, the engines tried (chain),
+                  and with a rule set a warning when it did not fit
+GET    /templates              saved rule sets, the fields they learn, whether E5 is there
+POST   /templates  name, files (3-6), values (JSON list of each file's fields)
+               -> "saved", or "needs_examples" with the fields that disagree and
+                  which example does not fit the others
+DELETE /templates/{name}
 ```
 
 `line_items` holds the items (name, quantity, unit price, amount), the subtotal,

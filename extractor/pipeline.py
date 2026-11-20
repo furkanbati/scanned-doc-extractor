@@ -153,5 +153,19 @@ def build_pipeline(config: dict, doctype: DocumentType) -> Pipeline:
     )
 
 
+def build_template_pipeline(template: dict, doctype: DocumentType) -> Pipeline:
+    """A user's rule set on E2's OCR, with E2's line-item rules."""
+
+    from extractor.fields.template import TemplateExtractor
+
+    config = load_engine("e2")
+
+    return Pipeline(
+        ocr=build_ocr(config["ocr"], config.get("ocr_options")),
+        extractor=TemplateExtractor(template, doctype),
+        line_items=reads_line_items(config, doctype),
+    )
+
+
 def reads_line_items(config: dict, doctype: DocumentType) -> bool:
     return doctype.line_items and config.get("line_items", "none") != "none"

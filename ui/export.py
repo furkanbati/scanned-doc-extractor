@@ -41,11 +41,14 @@ def result_rows(results: list[dict]) -> list[dict]:
                 notes.append(line_items_note(line_items))
         if result.get("pages", 1) > 1:
             notes.append(f"only page 1 of {result['pages']} read")
+        if result.get("warning"):
+            # The rule set did not read it: another engine did, or no one could.
+            notes.insert(0, "rule set did not fit")
         row["check"] = "; ".join(notes)
         if "chain" in result:
             # The engine whose result this is; in a chained mode, the first one
             # whose checks all passed, or the last one tried.
-            row["engine"] = result["method"]
+            row["engine"] = f"rule set: {result['template']}" if result.get("template") else result["method"]
         row["seconds"] = result["seconds"]
         row["usd"] = result["usd"]
         rows.append(row)
@@ -61,7 +64,8 @@ def _items_check(result: dict) -> str:
     """Why a receipt's items need a look, or "" when they do not."""
 
     gate = result.get("gate")
-    if gate is not None:
+    # A rule set's gate checks the fields only; the items keep their own reasons.
+    if gate is not None and not result.get("template"):
         return "; ".join(reason for reason in gate["reasons"] if reason.startswith("line items: "))
 
     line_items = result["line_items"]
