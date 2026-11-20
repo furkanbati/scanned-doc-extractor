@@ -45,7 +45,9 @@ section.
     as a comment in e3.yaml. Not measured: E4 with line items (item 1).
 12. **Line items are measured on CORD only.** No pilot set of receipts from
     another country.
-13. **Only the first page of a PDF is read.**
+13. **Only the first page of a PDF is read.** A PDF holding several invoices
+    should give one document per page (or let the user say which pages go
+    together).
 
 ## Infrastructure
 
@@ -58,3 +60,15 @@ section.
     line-item columns learned from the examples, and choosing the rule set by
     its fingerprint instead of by hand. The two SROIE stores it could not
     learn print their address and total in more than one place.
+
+## Batch use
+
+The Extract page already takes many files at once, reads them one after
+another with a progress bar and gives one table to download.
+
+16. **No ZIP upload.** Picking hundreds of files one by one is slow; a ZIP
+    of images and PDFs should be unpacked and read like separate uploads.
+17. **Large batches need the page open.** Reading is sequential inside the
+    UI session. For thousands of documents: a command-line tool that reads a
+    folder (with an engine or a rule set) and writes the Excel/CSV, resuming
+    where it stopped.
