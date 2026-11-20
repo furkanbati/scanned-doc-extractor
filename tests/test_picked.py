@@ -5,7 +5,7 @@ import pytest
 
 from extractor.ocr.base import OcrLine, rect_box
 from extractor.schema import load_doctype
-from extractor.templates.learn import Example, learn
+from extractor.templates.learn import Example, learn, suggest
 from extractor.templates.read import decide, extract
 from extractor.templates.values import alike, value_from_lines, words
 
@@ -128,3 +128,17 @@ def test_identifiers_must_match_digit_for_digit():
 
 def test_words_in_any_alphabet():
     assert words("FATURA TARİHİ: 12.03.2024") == ["FATURA", "TARİHİ"]
+
+
+def test_after_one_example_the_next_ones_come_with_their_lines_picked():
+    first = Example(EXAMPLES[0], {}, picked(EXAMPLES[0]))
+
+    suggested = suggest(INVOICE, [first], EXAMPLES[1])
+
+    assert {field: found["lines"] for field, found in suggested.items()} == picked(EXAMPLES[1])
+    assert suggested["invoice_number"]["value"] == "A-2024-0154"
+    assert suggested["total"]["value"] == "1.200,60"
+
+
+def test_nothing_is_suggested_before_any_example():
+    assert suggest(INVOICE, [], EXAMPLES[1]) == {}
