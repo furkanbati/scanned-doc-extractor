@@ -4,6 +4,12 @@
 #
 # The first available mode in `order` is the default. A mode with a `fallback`
 # runs that engine instead while its own engine cannot run here.
+#
+# A mode can also run engines in turn, `chain: [e2, e3]` in place of `method`:
+# a document whose checks fail (extractor/gate.py) goes to the next engine, and
+# engines that cannot run here are skipped. Give it a `measured` block of its
+# own. None is offered yet: on SROIE the chain was less accurate than its second
+# engine alone (reports/sroie_chain.md).
 
 order: [accurate, private]
 
