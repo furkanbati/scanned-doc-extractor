@@ -74,11 +74,33 @@ Two more checks were tried on dev and left out:
   wrong ones;
 - a stricter fingerprint threshold (0.7 to 0.8) changed little.
 
+## Any document type, taught by picking lines
+
+A rule set can be taught for any document type: the project's *receipt* and
+*invoice*, or one the user defines (fields, each text, date or amount, and
+whether it may be missing). On each example the user picks the OCR lines each
+value is printed on; the value is taken from them and can be corrected. From
+the second example on, the rules learned so far pick the lines, and the user
+only checks.
+
+- An optional field is learned from the examples that print it (two or more);
+  when a document does not print it, nothing needs a look.
+- An identifier (invoice number, tax number) must match digit for digit; a
+  name may differ by a few misread letters.
+- Labels may be in any alphabet ("FATURA TARİHİ"), and amounts may use a
+  decimal comma ("1.250,00").
+
+Checked by hand on four made-up Turkish invoices of one layout, through the
+UI: after the first example was picked, the second and third came with all
+seven fields picked right. The rule set read the fourth invoice, which it had
+not seen, right on all seven fields in 1.5 s. A receipt given to it went to
+E5, which read it as an invoice. That is a check of the workflow, not a
+measurement: there is no labelled invoice set.
+
 ## Limits
 
-- Only the four receipt fields. Custom fields (invoice number, tax number) and
-  line-item columns are not learned yet; line items come from E2's general
-  rules and keep their own check.
+- Line-item columns are not learned yet; line items come from E2's general
+  rules (receipts only) and keep their own check.
 - The user picks the rule set; documents are not matched to one automatically.
 - A layout the examples never showed (a rounding line, a second page) is not
   learned. The self-check catches it among the examples, not in documents
