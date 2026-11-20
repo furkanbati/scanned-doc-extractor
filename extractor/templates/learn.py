@@ -18,7 +18,7 @@ from itertools import combinations
 
 from extractor.ocr.base import OcrLine
 from extractor.schema import DocumentType, Fields, loose, normalize_text
-from extractor.templates.read import extract, read_field
+from extractor.templates.read import extract, read_field, read_field_at
 from extractor.templates.values import (
     alike,
     find_values,
@@ -181,7 +181,8 @@ def self_check(kind: str, texts: list[list[str]], values: list[str], picks: list
     return None
 
 
-def learn_field(kind: str, texts: list[list[str]], values: list[str], picks: list | None = None) -> dict | None:
+def learn_field(kind: str, texts: list[list[str]], values: list[str], picks: list | None = None,
+                constants: bool = True) -> dict | None:
     """The preferred rule that reads the value right on every example.
 
     Other labels that read every example right too are kept under "also": a
@@ -191,7 +192,7 @@ def learn_field(kind: str, texts: list[list[str]], values: list[str], picks: lis
     """
 
     working = [rule for rule in candidates(kind, texts, values, picks)
-               if all(same_value(kind, read_field(rule, kind, lines), value) for lines, value in zip(texts, values))]
+               if (constants or rule["kind"] != "constant") and all(same_value(kind, read_field(rule, kind, lines), value) for lines, value in zip(texts, values))]
     if not working:
         return None
 
@@ -354,6 +355,34 @@ def _keys(kind: str, lines: list[str], spot: _Spot) -> set[tuple]:
         keys.add(("nth", position - len(values), None, None))
 
     return keys
+
+
+def suggest(doctype: DocumentType, examples: list[Example], lines: list[OcrLine]) -> dict[str, dict]:
+    """For a document not yet confirmed: per field, the lines a rule learned
+    from the examples so far reads and the value it reads there.
+
+    Works from one example on, so a user picks every field once and then only
+    checks. A field no rule reads yet is left out.
+    """
+
+    texts = [line.text for line in lines]
+    found = {}
+    for spec in doctype.fields:
+        known, values, picks = field_view(spec, examples)
+        present = [i for i, value in enumerate(values) if (value or "").strip()]
+        if not present:
+            continue
+        args = ([known[i] for i in present], [values[i] for i in present], [picks[i] for i in present])
+        # What the document prints first: from one example every value looks
+        # constant, an invoice number too.
+        rule = learn_field(spec.type, *args, constants=False) or learn_field(spec.type, *args)
+        if rule is None:
+            continue
+        value, at = read_field_at(rule, spec.type, texts)
+        if value is not None:
+            found[spec.name] = {"lines": at, "value": value}
+
+    return found
 
 
 def fingerprint(examples: list[list[OcrLine]]) -> list[str]:
