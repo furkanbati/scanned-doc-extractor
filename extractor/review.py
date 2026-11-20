@@ -30,7 +30,8 @@ def review_notes(
 
     for spec in doctype.fields:
         if not (values[spec.name] or "").strip():
-            notes[spec.name] = "not found"
+            if not spec.optional:
+                notes[spec.name] = "not found"
         elif spec.type == "date" and not ISO_DATE.match(normalized[spec.name] or ""):
             notes[spec.name] = "not a recognisable date"
         elif spec.type == "amount" and not AMOUNT.match(normalized[spec.name] or ""):
