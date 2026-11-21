@@ -8,6 +8,7 @@ from extractor.ocr.base import OcrLine
 from extractor.fields.base import FieldExtractor, Usage
 from extractor.fields.line_items import LineItemResult, extract_line_items
 from extractor.ocr.base import OcrEngine
+from extractor.ocr.pdf_text import TextLayer
 from extractor.schema import DocumentType, Fields
 
 # One YAML file per engine: OCR, field extractor, model, prices, measured results.
@@ -57,10 +58,14 @@ class Pipeline:
         self.extractor = extractor
         self.line_items = line_items
 
-    def run(self, image: Image.Image) -> PipelineResult:
+    def run(self, image: Image.Image, text: "TextLayer | None" = None) -> PipelineResult:
+        """`text`: a digital PDF's text layer, read in place of OCR."""
+
         segments = None
         if self.ocr is None:
             lines = []
+        elif text is not None:
+            segments, lines = text.segments, text.lines
         elif self.line_items and hasattr(self.ocr, "read_segments"):
             segments = self.ocr.read_segments(image)
             lines = self.ocr.lines(segments)
