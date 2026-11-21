@@ -85,3 +85,21 @@ another with a progress bar and gives one table to download.
     UI session. For thousands of documents: a command-line tool that reads a
     folder (with an engine or a rule set) and writes the Excel/CSV, resuming
     where it stopped.
+
+## Installation and deployment
+
+Today `docker compose up` runs the UI, the API (OCR, rules, XML and PDF
+reading in one process) and Ollama on one machine, with ports open to that
+machine only. An agent (n8n, LangGraph) would join the same compose network
+and call `http://api:8000/extract`.
+
+19. **The API has no authentication.** Fine while it listens on localhost
+    only; before other computers or an agent on another machine use it, it
+    needs a token or a reverse proxy (Caddy, Nginx) with TLS.
+20. **Images are built from source on each machine.** A customer needs
+    prebuilt images from a registry and a one-command install (and update).
+21. **No guidance on where to run it.** A Windows PC with Docker Desktop is
+    enough for a small office; an always-on Linux mini server is sturdier; E5
+    wants a GPU (25 to 35 s per receipt on a CPU). Intel and AMD GPUs need
+    Ollama on the host, outside Docker. Document the choices and the minimum
+    hardware.
