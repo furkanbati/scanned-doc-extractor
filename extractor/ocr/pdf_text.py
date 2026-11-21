@@ -10,6 +10,8 @@ OCR instead. So is a rotated page, whose text coordinates do not follow the
 rendered image.
 """
 
+from dataclasses import dataclass
+
 import pypdfium2
 
 from extractor.ocr.base import OcrLine, rect_box
@@ -18,8 +20,25 @@ from extractor.ocr.base import OcrLine, rect_box
 MIN_TEXT_CHARS = 20
 
 
+@dataclass(frozen=True)
+class TextLayer:
+    """`segments`: the pieces as drawn (the line-item rules take these, as
+    they take OCR's boxes); `lines`: the pieces joined row by row."""
+
+    segments: list[OcrLine]
+    lines: list[OcrLine]
+
+
 def pdf_text_lines(data: bytes, dpi: int) -> list[OcrLine] | None:
     """The first page's lines from its text layer, or None when it has none."""
+
+    layer = text_layer(data, dpi)
+
+    return None if layer is None else layer.lines
+
+
+def text_layer(data: bytes, dpi: int) -> TextLayer | None:
+    """The first page's text layer, or None when it has none (a scan)."""
 
     try:
         pdf = pypdfium2.PdfDocument(data)
@@ -46,7 +65,9 @@ def pdf_text_lines(data: bytes, dpi: int) -> list[OcrLine] | None:
     finally:
         pdf.close()
 
-    return rows(pieces)
+    segments = [OcrLine(text=piece[4], box=rect_box(*piece[:4])) for piece in pieces]
+
+    return TextLayer(segments, rows(pieces))
 
 
 def rows(pieces: list[tuple[int, int, int, int, str]]) -> list[OcrLine]:
