@@ -49,3 +49,12 @@ def test_pieces_on_one_row_join_left_to_right():
               (10, 50, 120, 70, "KDV")]
 
     assert [line.text for line in rows(pieces)] == ["Un 50 kg 1.250,00", "KDV"]
+
+
+def test_a_wide_gap_splits_a_row_into_pieces_as_ocr_boxes_do():
+    from extractor.ocr.pdf_text import text_layer
+
+    layer = text_layer(text_pdf(INVOICE), dpi=200)
+
+    assert "Un 50 kg" in [piece.text for piece in layer.segments]
+    assert "1.250,00" in [piece.text for piece in layer.segments]

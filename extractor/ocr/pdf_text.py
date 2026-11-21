@@ -18,6 +18,9 @@ from extractor.ocr.base import OcrLine, rect_box
 
 # Letters and digits a page needs to count as text rather than a scan.
 MIN_TEXT_CHARS = 20
+# A gap wider than this many letter heights splits a line into pieces, as
+# OCR gives a row's columns as separate boxes.
+PIECE_GAP = 1.5
 
 
 @dataclass(frozen=True)
@@ -55,19 +58,48 @@ def text_layer(data: bytes, dpi: int) -> TextLayer | None:
             return None
         scale = dpi / 72
         height = page.get_height()
-        pieces = []
-        for index in range(text.count_rects()):
-            left, bottom, right, top = text.get_rect(index)
-            piece = " ".join(text.get_text_bounded(left, bottom, right, top).split())
-            if piece:
-                pieces.append((round(left * scale), round((height - top) * scale),
-                               round(right * scale), round((height - bottom) * scale), piece))
+        pieces = [(round(left * scale), round((height - top) * scale), round(right * scale),
+                   round((height - bottom) * scale), piece)
+                  for left, bottom, right, top, piece in _pieces(text)]
     finally:
         pdf.close()
 
     segments = [OcrLine(text=piece[4], box=rect_box(*piece[:4])) for piece in pieces]
 
     return TextLayer(segments, rows(pieces))
+
+
+def _pieces(text) -> list[tuple[float, float, float, float, str]]:
+    """Runs of characters, in PDF points: split at line breaks and at wide
+    gaps. Built from each character and its box, so no piece takes letters
+    that overlap its neighbour."""
+
+    full = text.get_text_range()
+    pieces, chars, box = [], [], None
+
+    def close():
+        word = " ".join("".join(chars).split())
+        if word and box:
+            pieces.append((*box, word))
+
+    for index, char in enumerate(full[:text.count_chars()]):
+        if char in ("\r", "\n"):
+            close()
+            chars, box = [], None
+            continue
+        if char.isspace():
+            chars.append(" ")
+            continue
+        left, bottom, right, top = text.get_charbox(index)
+        if box is not None and left - box[2] > PIECE_GAP * max(top - bottom, box[3] - box[1]):
+            close()
+            chars, box = [], None
+        chars.append(char)
+        box = (left, bottom, right, top) if box is None else (
+            min(box[0], left), min(box[1], bottom), max(box[2], right), max(box[3], top))
+    close()
+
+    return pieces
 
 
 def rows(pieces: list[tuple[int, int, int, int, str]]) -> list[OcrLine]:
