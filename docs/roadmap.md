@@ -66,6 +66,14 @@ section.
     its fingerprint instead of by hand. The two SROIE stores it could not
     learn print their address and total in more than one place.
 
+## Digital documents
+
+18. **Other digital forms are not read.** The e-Fatura's HTML view, an XML
+    embedded in a PDF, and UBL documents other than invoices (dispatch notes,
+    e-İrsaliye) go to OCR or are refused. The e-Fatura reader is checked on
+    made-up XML only (reports/digital_documents.md), not yet on real
+    invoices from several providers.
+
 ## Batch use
 
 The Extract page already takes many files at once, reads them one after
