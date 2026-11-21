@@ -19,7 +19,8 @@ from pydantic import BaseModel, Field
 
 import catalogue
 import local_model
-from extractor.gate import decide
+from extractor.efatura import NotAnInvoice, looks_like_xml, read_invoice
+from extractor.gate import LINE_ITEMS, decide
 from extractor.locate import locate_fields
 from extractor.pipeline import Pipeline, build_pipeline, build_template_pipeline, load_engine
 from extractor.review import review_notes
@@ -36,6 +37,8 @@ PDF_DPI = 200
 TEMPLATE = "template:"
 # The engine that reads what a rule set cannot: local, like the rule set.
 TEMPLATE_FALLBACK = "e5"
+# An e-Fatura's XML is read as it is, whatever mode was chosen.
+XML_METHOD = "efatura_xml"
 
 app = FastAPI(title="Scanned Document Extractor")
 
@@ -370,11 +373,17 @@ async def extract(
     method: str | None = Form(None),
     template: str | None = Form(None, description="a saved rule set; E5 reads what it cannot"),
 ) -> dict:
-    profile, steps = choose_method(profile, method, template)
-
     data = await file.read()
     if len(data) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="File larger than 10 MB")
+    # Needs no engine, so it is read even when the chosen one cannot run here.
+    if looks_like_xml(data):
+        answer = read_xml(data)
+        return {"profile": profile, **answer, "warning": None, "pages": 1,
+                "chain": [{"method": XML_METHOD, "seconds": answer["seconds"], "usd": None,
+                           "accepted": answer["gate"]["accepted"], "reasons": answer["gate"]["reasons"],
+                           "error": None}]}
+    profile, steps = choose_method(profile, method, template)
     image, pages = read_document(data)
 
     # Each engine's gate decides whether its result stands or the document goes
@@ -416,6 +425,41 @@ async def extract(
         "seconds": round(sum(step["seconds"] or 0 for step in chain), 3),
         "usd": sum(costs) if costs else None,
         "pages": pages,
+    }
+
+
+def read_xml(data: bytes) -> dict:
+    """An e-Fatura (UBL-TR XML): its tags give the invoice's fields and items.
+    Accepted unless a field is missing or its own amounts do not add up."""
+
+    start = time.perf_counter()
+    try:
+        invoice = read_invoice(data)
+    except NotAnInvoice as error:
+        raise HTTPException(status_code=400, detail=str(error))
+    doctype = load_doctype("invoice")
+    review = review_notes(doctype, invoice.fields)
+    line_items = invoice.line_items.to_json()
+    reasons = [f"{name} {note}" for name, note in review.items()]
+    reasons += [LINE_ITEMS + reason for reason in invoice.line_items.reasons]
+
+    return {
+        "method": XML_METHOD,
+        "template": None,
+        "doctype": doctype.name,
+        "fields": doctype.values(invoice.fields),
+        "normalized": doctype.normalize(invoice.fields),
+        "review": review,
+        "lines": [],
+        "field_lines": {},
+        "line_items": line_items,
+        "gate": {"accepted": not reasons, "reasons": reasons},
+        "seconds": round(time.perf_counter() - start, 3),
+        "usage": None,
+        "usd": None,
+        "image_size": None,
+        # ETTN, currency, scenario, invoice type, buyer.
+        "meta": invoice.meta,
     }
 
 
@@ -498,4 +542,5 @@ def run_engine(method: str, image: Image.Image, doctype_name: str | None = None)
         "usage": vars(result.usage) if result.usage else None,
         "usd": usd,
         "image_size": list(image.size),
+        "meta": None,
     }
