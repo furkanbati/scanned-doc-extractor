@@ -48,7 +48,7 @@ def result_rows(results: list[dict]) -> list[dict]:
         if "chain" in result:
             # The engine whose result this is; in a chained mode, the first one
             # whose checks all passed, or the last one tried.
-            row["engine"] = f"rule set: {result['template']}" if result.get("template") else result["method"]
+            row["engine"] = engine_name(result)
         row["seconds"] = result["seconds"]
         row["usd"] = result["usd"]
         rows.append(row)
@@ -58,6 +58,16 @@ def result_rows(results: list[dict]) -> list[dict]:
 
 def line_items_note(line_items: dict) -> str:
     return "line items: " + ", ".join(line_items["reasons"] or ["check"])
+
+
+def engine_name(result: dict) -> str:
+    """Who read the document, and from what: "e2 (PDF text)", "e-Fatura XML"."""
+
+    if result["method"] == "efatura_xml":
+        return "e-Fatura XML"
+    name = f"rule set: {result['template']}" if result.get("template") else result["method"]
+
+    return name + " (PDF text)" if result.get("text_source") == "pdf" else name
 
 
 def _items_check(result: dict) -> str:
