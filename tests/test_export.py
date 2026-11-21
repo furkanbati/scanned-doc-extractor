@@ -6,7 +6,7 @@ from openpyxl import load_workbook
 
 from extractor.review import review_notes
 from extractor.schema import load_doctype
-from ui.export import columns, line_item_rows, result_rows, to_csv, to_json, to_xlsx
+from ui.export import columns, engine_name, line_item_rows, result_rows, to_csv, to_json, to_xlsx
 
 RECEIPT = load_doctype("receipt")
 
@@ -233,3 +233,10 @@ def test_with_a_gate_item_rows_carry_only_the_line_item_reasons():
 
     assert rows[0]["check"] == "line items: 'Extra Pearl' may be an add-on to the item above"
     assert rows[-1]["check"] == ""
+
+
+def test_the_engine_column_says_what_the_values_were_read_from():
+    assert engine_name({"method": "efatura_xml"}) == "e-Fatura XML"
+    assert engine_name({"method": "e2", "text_source": "pdf"}) == "e2 (PDF text)"
+    assert engine_name({"method": "template:abc", "template": "ABC", "text_source": "pdf"}) == "rule set: ABC (PDF text)"
+    assert engine_name({"method": "e3", "text_source": None}) == "e3"
