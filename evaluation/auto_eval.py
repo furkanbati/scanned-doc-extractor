@@ -12,6 +12,8 @@ items and gate decision, in data/sroie/autocache/<split>.jsonl. Resumable.
 import argparse
 import json
 import os
+import random
+import tempfile
 import time
 from pathlib import Path
 
@@ -19,11 +21,17 @@ from PIL import Image
 
 from evaluation import templates_eval
 from evaluation.dataset import DEFAULT_ROOT, SPLITS, load_sroie
+from evaluation.metrics import field_matches
 from extractor.gate import decide
 from extractor.pipeline import build_pipeline, load_engine
 from extractor.review import review_notes
 from extractor.schema import load_doctype, loose
+from extractor.templates import auto, store
+from extractor.templates import read as template_read
 from extractor.templates.choose import choose
+
+# The order receipts arrive in: shuffled, so a store's receipts are spread.
+STREAM_SEED = 7
 
 RESULTS = Path(__file__).parent / "results" / "auto"
 
@@ -132,12 +140,95 @@ def choosing(split: str, root: Path) -> dict:
     }
 
 
+def stream(split: str, root: Path, seed: int = STREAM_SEED, teacher_check: str = "gate") -> dict:
+    """Every receipt of the split in turn, as `/extract` with learning=auto
+    would treat it, with E5 as the teacher (its cached answers).
+
+    A receipt of a known format is read by its rule set; if the rule set's
+    gate rejects it, E5's answer stands. On probation, E5's answer is
+    compared, and a disagreement removes the rule set (E5's answer stands).
+    A receipt of no known format gets E5's answer, and becomes an example
+    when E5's gate accepted it.
+
+    `teacher_check`: "gate", as the API (fields, and the line items adding
+    up); "fields", a looser variant measured beside it: every field found and
+    well formed, the items not looked at.
+    """
+
+    doctype = load_doctype("receipt")
+    cache = load_cache(root, split)
+    samples = [s for s in load_sroie(root, split=split, doctype=doctype) if s.id in cache]
+    random.Random(seed).shuffle(samples)
+    os.environ["TEMPLATES_DIR"] = tempfile.mkdtemp(prefix="auto-eval-")
+
+    rows, removed, probation_checks, accepted_by_teacher = [], [], 0, 0
+    for sample in samples:
+        row = cache[sample.id]
+        lines = templates_eval.cached_lines(row)
+        teacher = row["e5"]
+        teacher_fields = teacher["fields"] if teacher else {name: None for name in doctype.field_names}
+        if teacher_check == "fields":
+            teacher_ok = bool(teacher) and not review_notes(doctype, teacher_fields)
+        else:
+            teacher_ok = bool(teacher and teacher["gate"]["accepted"])
+        accepted_by_teacher += teacher_ok
+        match = choose(lines, store.all_templates())
+        source, final, learned = "e5", teacher_fields, None
+        if match is not None:
+            read = template_read.extract(match.template, doctype, lines)
+            gate = template_read.decide(match.template, doctype, lines, review_notes(doctype, read))
+            if not gate.accepted:
+                source = "e5 (rule set rejected it)"
+            elif auto.on_probation(match.template) and teacher_ok:
+                probation_checks += 1
+                checked = auto.check(match.file, match.template, doctype, read, teacher_fields)
+                if checked["removed"]:
+                    removed.append({"rule_set": match.file, "id": sample.id, "differ": checked["differ"]})
+                    source = "e5 (rule set removed)"
+                else:
+                    source, final = "rule set", read
+            else:
+                source, final = "rule set", read
+        elif teacher_ok:
+            learned = auto.observe(lines, teacher_fields, doctype, "e5").get("learned")
+        rows.append({"id": sample.id, "store": loose(sample.fields["company"]) or "", "source": source,
+                     "rule_set": match.file if match else None, "learned": learned,
+                     "matches": field_matches(final, sample.fields, doctype),
+                     "e5_matches": field_matches(teacher_fields, sample.fields, doctype),
+                     "e5_seconds": row["e5_seconds"]})
+
+    def right(chosen, key="matches"):
+        cells = [value for row in chosen for value in row[key].values()]
+        return round(sum(cells) / len(cells), 4) if cells else None
+
+    by_rules = [row for row in rows if row["source"] == "rule set"]
+    learned = [row["learned"] for row in rows if row["learned"]]
+    # The store a rule set was learned for: that of the receipt completing its group.
+    learned_for = {row["learned"]: row["store"] for row in rows if row["learned"]}
+    wrong_store = [row for row in by_rules if learned_for.get(row["rule_set"]) != row["store"]]
+    e5_calls = sum(row["source"] != "rule set" for row in rows) + probation_checks
+    return {
+        "split": split, "receipts": len(rows), "stream_seed": seed, "teacher_check": teacher_check,
+        "teacher_accepted": accepted_by_teacher,
+        "rule_sets_learned": len(learned), "removed_on_probation": removed,
+        "read_by_rule_sets": len(by_rules), "e5_calls": e5_calls, "probation_checks": probation_checks,
+        "right_all": right(rows), "right_all_e5_alone": right(rows, "e5_matches"),
+        "right_by_rule_sets": right(by_rules), "right_by_rule_sets_e5_on_same": right(by_rules, "e5_matches"),
+        "seconds_e5_saved": round(sum(row["e5_seconds"] for row in by_rules), 1),
+        "rule_set_reads_of_another_store": len(wrong_store),
+        "learned": learned,
+        "receipts_detail": rows,
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--split", default="dev", choices=[s for s in SPLITS if s != "test"])
     parser.add_argument("--data", type=Path, default=DEFAULT_ROOT)
     parser.add_argument("--cache", action="store_true", help="read every receipt with E2's OCR and E5")
     parser.add_argument("--choose", action="store_true", help="measure choosing the rule set by fingerprint")
+    parser.add_argument("--teacher-check", default="gate", choices=["gate", "fields"],
+                        help="when a teacher's answer becomes an example (gate: as the API)")
     args = parser.parse_args()
     os.environ.setdefault("OLLAMA_HOST", "http://localhost:11434")
 
@@ -151,6 +242,16 @@ def main() -> None:
                                                            encoding="utf-8")
         print(json.dumps(summary, indent=2, ensure_ascii=False))
         return
+
+    summary = stream(args.split, args.data, teacher_check=args.teacher_check)
+    name = f"stream-{args.split}" + ("" if args.teacher_check == "gate" else f"-{args.teacher_check}")
+    RESULTS.mkdir(parents=True, exist_ok=True)
+    with (RESULTS / f"{name}.receipts.jsonl").open("w", encoding="utf-8", newline="") as file:
+        for row in summary.pop("receipts_detail"):
+            file.write(json.dumps(row, ensure_ascii=False) + "\n")
+    (RESULTS / f"{name}.json").write_text(json.dumps(summary, indent=2, ensure_ascii=False),
+                                                       encoding="utf-8")
+    print(json.dumps(summary, indent=2, ensure_ascii=False))
 
 
 if __name__ == "__main__":
