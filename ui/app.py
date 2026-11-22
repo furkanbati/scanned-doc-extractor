@@ -13,7 +13,7 @@ import requests
 import streamlit as st
 from PIL import Image, ImageDraw, ImageFont
 
-from export import columns, line_item_rows, result_rows, to_csv, to_json, to_xlsx
+from export import columns, engine_name, line_item_rows, result_rows, to_csv, to_json, to_xlsx
 
 API_URL = os.getenv("API_URL", "http://localhost:8000")
 PDF_DPI = 200  # the API renders PDFs at the same scale, so boxes line up
@@ -630,8 +630,8 @@ if "results" not in st.session_state:
 results = st.session_state.results
 
 uploads = st.file_uploader(
-    "Receipt images or PDFs (first page is read)",
-    type=["jpg", "jpeg", "png", "pdf"],
+    "Images, PDFs (first page is read) or e-Fatura XML",
+    type=["jpg", "jpeg", "png", "pdf", "xml"],
     accept_multiple_files=True,
 )
 if not uploads:
@@ -784,8 +784,7 @@ with right:
                  for step in chain if step is not answered]
         last = f"{answered['method']} answered" + ("" if answered["accepted"] else ", but not every check passed")
         st.caption("Engines tried: " + " → ".join(steps + [last]))
-    engine_name = f"rule set {result['template']}" if result.get("template") else f"engine {result['method']}"
-    facts = [f"{result['seconds']:.1f} s", engine_name]
+    facts = [f"{result['seconds']:.1f} s", engine_name(result)]
     if result["usd"] is not None:
         facts.append(f"${result['usd']:.5f}")
     if result["usage"]:
@@ -794,6 +793,9 @@ with right:
     if result["pages"] > 1:
         st.warning(f"Only page 1 of {result['pages']} was read.")
 
+    if result.get("meta"):
+        with st.expander("e-Fatura details (ETTN, currency, scenario, type, buyer)"):
+            st.json(result["meta"])
     with st.expander("Normalized values (dates as YYYY-MM-DD, amounts with two decimals)"):
         st.json(result["normalized"])
     if result["lines"]:
@@ -801,8 +803,12 @@ with right:
             st.text("\n".join(line["text"] for line in result["lines"]))
 
 with left:
+    if result.get("image_size") is None:
+        st.info("An e-Fatura XML has no image: every value comes from its tags, as the issuer sent it.")
+        st.stop()
     image = open_document(documents[index][1])
     if result["lines"]:
-        st.image(draw_fields(image, result), caption="OCR lines behind each field, in the field's colour")
+        source = "The PDF's text lines" if result.get("text_source") == "pdf" else "OCR lines"
+        st.image(draw_fields(image, result), caption=f"{source} behind each field, in the field's colour")
     else:
         st.image(image, caption="This engine reads the image directly, so there are no OCR boxes to outline.")

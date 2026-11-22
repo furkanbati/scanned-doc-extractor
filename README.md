@@ -25,7 +25,8 @@ private mode runs OCR and rules (E2). See [Private mode on a GPU](#private-mode-
    (free): a local vision model, E5 (0.825, about 21 s per receipt on the GPU).
    While no Ollama server is reachable it runs OCR and rules, E2 (0.631, 3.6 s),
    and says so. Without an OpenAI key only the private mode is offered.
-2. Upload one or more receipt images or PDFs (first page is read, 10 MB each).
+2. Upload one or more receipt images, PDFs (first page is read, 10 MB each) or
+   e-Fatura XML files (see [Digital invoices](#digital-invoices-e-fatura-and-text-pdfs)).
    The button shows the estimated cost before anything is sent.
 3. Check the table. The *check* column flags fields that were not found, dates
    that are not dates and totals that are not amounts; edit any cell to correct it.
@@ -78,6 +79,28 @@ A rule set reads one layout. For documents in many layouts, use E3 or, to keep
 them local, E5. Rule sets and the document types users define are saved as YAML
 in `templates/` (in Docker, on a volume); they are the user's data and stay out
 of git. Invoice fields are not measured: there is no labelled invoice set yet.
+
+## Digital invoices: e-Fatura and text PDFs
+
+Not every document is a scan. Two kinds are read without OCR:
+
+- **e-Fatura XML** (UBL-TR, the format of Turkey's e-Fatura and e-Arşiv). The
+  issuer, tax number (VKN or TCKN), invoice number, date, amounts and every
+  line come from their tags, whatever mode is chosen, in a few milliseconds.
+  The ETTN, currency, scenario, invoice type and buyer come back in `meta`.
+  The invoice's own amounts are checked against each other; one that does not
+  add up is marked for a check. The XML is parsed with defusedxml, so a file
+  that declares entities is refused.
+- **PDFs with a text layer** (made by software rather than scanned). Where an
+  engine would run OCR (E2, rule sets, E4, and the lines to pick from when
+  teaching), the PDF's own text and positions are used instead: no misread
+  letters, and about 1 ms instead of seconds. A page with too little text, or
+  rotated, is a scan and goes to OCR as before. `pdf_text=off` always runs OCR.
+  E3 and E5 read the image either way.
+
+The table's *engine* column says what a document was read from: "e-Fatura
+XML", "e2 (PDF text)", "rule set: … (PDF text)". Details and the check on
+made-up invoices: [reports/digital_documents.md](reports/digital_documents.md).
 
 ## Private mode on a GPU
 
@@ -177,9 +200,13 @@ docker compose --profile test run --rm test # unit tests
 ```
 GET  /profiles                 modes, whether each can run here, measured accuracy and cost
 GET  /methods                  every engine (e1 ... e5) with the same details
-POST /extract  file            image or PDF; optional profile=accurate|private
+POST /extract  file            image, PDF or e-Fatura XML; optional profile=accurate|private
                [profile|method]  or method=e1...e5 (default: the default mode)
                [template]        or template=<rule set>: read with it, E5 for what it cannot
+               [pdf_text]        auto (default): a PDF's text layer in place of OCR; off: OCR
+               an e-Fatura XML is read from its tags whatever was chosen (method
+               "efatura_xml", its ETTN, currency, type and buyer in meta);
+               text_source says where the lines came from: xml, pdf, ocr, or null
                -> fields, normalized fields, fields to check, OCR lines and boxes,
                   the lines behind each field, line items (e2, e5; null otherwise),
                   seconds, tokens, USD, page count, the engines tried (chain),
@@ -187,6 +214,7 @@ POST /extract  file            image or PDF; optional profile=accurate|private
 GET    /doctypes               document types: the project's and the users'
 POST   /doctypes               a new document type: name, fields (name, type, optional)
 POST   /ocr       file         the numbered OCR lines and boxes to pick fields from
+                                (a text PDF's own lines; pdf_text=off for OCR)
 POST   /templates/suggest      per field, the lines and value the examples so far point to
 POST   /templates/value        the value in picked lines, as learning reads it
 POST   /templates/learn        name, doctype, 3-6 examples (lines, picked lines, values)
