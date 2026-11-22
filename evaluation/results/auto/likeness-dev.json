@@ -1,0 +1,30 @@
+{
+  "split": "dev",
+  "same_store_pairs": 578,
+  "different_store_pairs": 3793,
+  "same_min": 0.231,
+  "different_max": 0.208,
+  "by_threshold": {
+    "0.25": {
+      "same_store_split": 2,
+      "different_stores_joined": 0
+    },
+    "0.3": {
+      "same_store_split": 6,
+      "different_stores_joined": 0
+    },
+    "0.4": {
+      "same_store_split": 27,
+      "different_stores_joined": 0
+    },
+    "0.5": {
+      "same_store_split": 85,
+      "different_stores_joined": 0
+    },
+    "0.6": {
+      "same_store_split": 237,
+      "different_stores_joined": 0
+    }
+  },
+  "group_alike": 0.3
+}
