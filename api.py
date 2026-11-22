@@ -19,11 +19,13 @@ from pydantic import BaseModel, Field
 
 import catalogue
 import local_model
-from extractor.gate import decide
+from extractor.efatura import NotAnInvoice, looks_like_xml, read_invoice
+from extractor.gate import LINE_ITEMS, decide
 from extractor.locate import locate_fields
 from extractor.pipeline import Pipeline, build_pipeline, build_template_pipeline, load_engine
 from extractor.review import review_notes
 from extractor.ocr.base import OcrLine
+from extractor.ocr.pdf_text import TextLayer, text_layer
 from extractor.schema import DocumentType, doctype_names, load_doctype, save_doctype
 from extractor.templates import read as template_read
 from extractor.templates import store as templates
@@ -36,6 +38,8 @@ PDF_DPI = 200
 TEMPLATE = "template:"
 # The engine that reads what a rule set cannot: local, like the rule set.
 TEMPLATE_FALLBACK = "e5"
+# An e-Fatura's XML is read as it is, whatever mode was chosen.
+XML_METHOD = "efatura_xml"
 
 app = FastAPI(title="Scanned Document Extractor")
 
@@ -97,6 +101,21 @@ def read_document(data: bytes) -> tuple[Image.Image, int]:
         raise HTTPException(status_code=400, detail="Not an image or PDF file")
 
     return image, 1
+
+
+PDF_TEXT = ("auto", "off")
+
+
+def document_text(data: bytes, pdf_text: str) -> TextLayer | None:
+    """A digital PDF's text layer, read in place of OCR ("auto"); None for an
+    image, a scan, or with "off"."""
+
+    if pdf_text not in PDF_TEXT:
+        raise HTTPException(status_code=400, detail=f"pdf_text must be one of {', '.join(PDF_TEXT)}")
+    if pdf_text == "off" or data[:5] != b"%PDF-":
+        return None
+
+    return text_layer(data, PDF_DPI)
 
 
 def choose_method(profile: str | None, method: str | None, template: str | None = None) -> tuple[str | None, list[str]]:
@@ -261,18 +280,20 @@ def doctype_or_404(name: str) -> DocumentType:
 
 
 @app.post("/ocr")
-async def ocr(file: UploadFile = File(...)) -> dict:
+async def ocr(file: UploadFile = File(...), pdf_text: str = Form("auto")) -> dict:
     """E2's OCR lines and boxes, numbered in reading order: the lines a user
-    picks each field's value from when teaching a rule set."""
+    picks each field's value from when teaching a rule set. A digital PDF's
+    text layer gives them without OCR."""
 
     data = await file.read()
     if len(data) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="File larger than 10 MB")
+    text = document_text(data, pdf_text)
     image, pages = read_document(data)
-    lines = get_pipeline("e2").ocr.read(image)
+    lines = text.lines if text is not None else get_pipeline("e2").ocr.read(image)
 
     return {"lines": [{"text": line.text, "box": list(line.box)} for line in lines],
-            "image_size": list(image.size), "pages": pages}
+            "image_size": list(image.size), "pages": pages, "text_source": "pdf" if text is not None else "ocr"}
 
 
 @app.get("/doctypes")
@@ -369,12 +390,20 @@ async def extract(
     profile: str | None = Form(None),
     method: str | None = Form(None),
     template: str | None = Form(None, description="a saved rule set; E5 reads what it cannot"),
+    pdf_text: str = Form("auto", description="auto: a digital PDF's text layer in place of OCR; off: always OCR"),
 ) -> dict:
-    profile, steps = choose_method(profile, method, template)
-
     data = await file.read()
     if len(data) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="File larger than 10 MB")
+    # Needs no engine, so it is read even when the chosen one cannot run here.
+    if looks_like_xml(data):
+        answer = read_xml(data)
+        return {"profile": profile, **answer, "warning": None, "pages": 1,
+                "chain": [{"method": XML_METHOD, "seconds": answer["seconds"], "usd": None,
+                           "accepted": answer["gate"]["accepted"], "reasons": answer["gate"]["reasons"],
+                           "error": None}]}
+    profile, steps = choose_method(profile, method, template)
+    text = document_text(data, pdf_text)
     image, pages = read_document(data)
 
     # Each engine's gate decides whether its result stands or the document goes
@@ -384,7 +413,7 @@ async def extract(
     answer, chain, failure = None, [], None
     for number, step in enumerate(steps, start=1):
         try:
-            result = run_engine(step, image, doctype)
+            result = run_engine(step, image, doctype, text)
         except Exception as error:
             failure = f"Extraction failed: {error}"
             chain.append({"method": step, "seconds": None, "usd": None, "accepted": None,
@@ -419,6 +448,42 @@ async def extract(
     }
 
 
+def read_xml(data: bytes) -> dict:
+    """An e-Fatura (UBL-TR XML): its tags give the invoice's fields and items.
+    Accepted unless a field is missing or its own amounts do not add up."""
+
+    start = time.perf_counter()
+    try:
+        invoice = read_invoice(data)
+    except NotAnInvoice as error:
+        raise HTTPException(status_code=400, detail=str(error))
+    doctype = load_doctype("invoice")
+    review = review_notes(doctype, invoice.fields)
+    line_items = invoice.line_items.to_json()
+    reasons = [f"{name} {note}" for name, note in review.items()]
+    reasons += [LINE_ITEMS + reason for reason in invoice.line_items.reasons]
+
+    return {
+        "method": XML_METHOD,
+        "template": None,
+        "doctype": doctype.name,
+        "fields": doctype.values(invoice.fields),
+        "normalized": doctype.normalize(invoice.fields),
+        "review": review,
+        "lines": [],
+        "field_lines": {},
+        "line_items": line_items,
+        "gate": {"accepted": not reasons, "reasons": reasons},
+        "seconds": round(time.perf_counter() - start, 3),
+        "usage": None,
+        "usd": None,
+        "image_size": None,
+        "text_source": "xml",
+        # ETTN, currency, scenario, invoice type, buyer.
+        "meta": invoice.meta,
+    }
+
+
 def template_warning(chain: list[dict], answered_by: str) -> str | None:
     """What the user must know when the rule set did not read the document."""
 
@@ -434,10 +499,12 @@ def template_warning(chain: list[dict], answered_by: str) -> str | None:
     return f"The rule set did not fit this document ({why}). E5 is not available here: check the result."
 
 
-def run_engine(method: str, image: Image.Image, doctype_name: str | None = None) -> dict:
+def run_engine(method: str, image: Image.Image, doctype_name: str | None = None,
+               text: TextLayer | None = None) -> dict:
     """One engine's result on the image, with its checks and gate decision.
 
     `doctype_name`: read this document type instead of the engine's own.
+    `text`: a digital PDF's text layer, which engines that OCR read instead.
     """
 
     template = None
@@ -452,7 +519,8 @@ def run_engine(method: str, image: Image.Image, doctype_name: str | None = None)
         doctype = load_doctype(doctype_name or config["doctype"])
 
     start = time.perf_counter()
-    result = pipeline.run(image)
+    reads_text = getattr(pipeline, "ocr", None) is not None
+    result = pipeline.run(image, text) if text is not None and reads_text else pipeline.run(image)
     seconds = time.perf_counter() - start
 
     usd = None
@@ -498,4 +566,8 @@ def run_engine(method: str, image: Image.Image, doctype_name: str | None = None)
         "usage": vars(result.usage) if result.usage else None,
         "usd": usd,
         "image_size": list(image.size),
+        "meta": None,
+        # Where the lines came from: "pdf" (text layer), "ocr", or None for an
+        # engine that reads the image itself.
+        "text_source": ("pdf" if text is not None else "ocr") if reads_text else None,
     }
