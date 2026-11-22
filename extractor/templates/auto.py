@@ -129,7 +129,8 @@ def observe(lines: list[OcrLine], values: dict, doctype: DocumentType, teacher: 
                      "created": date.today().isoformat(), "examples": []}
         group["examples"].append({"lines": [{"text": line.text, "box": list(line.box)} for line in lines],
                                   "values": dict(values)})
-        status = {"group": group["id"], "examples": len(group["examples"]), "learned": None}
+        status = {"group": group["id"], "examples": len(group["examples"]), "needed": MIN_EXAMPLES,
+                  "learned": None}
         if len(group["examples"]) < MIN_EXAMPLES:
             _save_group(group)
             return status

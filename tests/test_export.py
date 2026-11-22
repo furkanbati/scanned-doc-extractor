@@ -240,3 +240,26 @@ def test_the_engine_column_says_what_the_values_were_read_from():
     assert engine_name({"method": "e2", "text_source": "pdf"}) == "e2 (PDF text)"
     assert engine_name({"method": "template:abc", "template": "ABC", "text_source": "pdf"}) == "rule set: ABC (PDF text)"
     assert engine_name({"method": "e3", "text_source": None}) == "e3"
+
+
+def test_what_learning_did_is_said_in_a_sentence():
+    from ui.export import describe_learning
+
+    assert describe_learning(None) is None
+    assert describe_learning({"group": "a", "examples": 2, "needed": 3, "learned": None}).startswith(
+        "Kept as example 2 of 3")
+    assert "'abc-auto'" in describe_learning({"group": "a", "examples": 3, "needed": 3, "learned": "abc-auto"})
+    assert "4 more" in describe_learning({"probation": {"agreed": True, "left": 4, "removed": False}})
+    assert describe_learning({"probation": {"agreed": False, "removed": True, "differ": ["total"]}}) is None
+
+
+def test_audited_and_removed_reads_say_so_in_check():
+    base = {"fields": {"company": "A", "address": "B", "date": "2024-01-01", "total": "1.00"},
+            "gate": {"accepted": True, "reasons": []}, "method": "template:abc", "template": "abc", "chain": [],
+            "seconds": 1.0, "usd": None}
+    audited = result_rows([{"file": "a.png", "result": {**base, "audit": True}}])[0]
+    removed = result_rows([{"file": "b.png", "result": {**base, "warning": "removed",
+                                                         "learning": {"probation": {"removed": True}}}}])[0]
+
+    assert audited["check"] == "picked for a random check"
+    assert removed["check"] == "automatic rule set removed"

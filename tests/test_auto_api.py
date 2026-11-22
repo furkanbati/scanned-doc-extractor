@@ -137,3 +137,14 @@ def test_a_waiting_format_can_be_forgotten(learning, client):
     assert client.get("/templates").json()["pending"] == []
     assert client.delete(f"/templates/pending/{group}").status_code == 404
     assert client.delete("/templates/pending/..%2Fx").status_code == 404
+
+
+def test_only_a_model_teaches(client, monkeypatch):
+    monkeypatch.setattr(api, "TEACHERS", ("e3",))
+    monkeypatch.setattr(api, "get_typed_pipeline", lambda method, doctype: Teacher(doctype))
+
+    body = client.post("/extract", files={"file": ("d.png", png(41))},
+                       data={"learning": "auto", "doctype": "invoice", "method": "e5"}).json()
+
+    assert body["gate"]["accepted"] is True
+    assert body["learning"] is None

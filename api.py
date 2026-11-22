@@ -43,6 +43,9 @@ TEMPLATE_FALLBACK = "e5"
 # template=auto: the rule set is chosen by the document's fingerprint.
 AUTO = "auto"
 LEARNING = ("off", "auto")
+# Engines whose accepted answers may teach a rule set: the models. E2's general
+# rules are not; the gate cannot see a misread name (reports/sroie_chain.md).
+TEACHERS = ("e3", "e5")
 # An e-Fatura's XML is read as it is, whatever mode was chosen.
 XML_METHOD = "efatura_xml"
 
@@ -530,7 +533,7 @@ def learn_from(answer: dict, chain: list[dict], match, image: Image.Image, text:
     if not accepted:
         return answer, None, False
     if match is None:
-        if text is None or answer["method"].startswith(TEMPLATE):
+        if text is None or answer["method"] not in TEACHERS:
             return answer, None, False
         return answer, auto.observe(text.lines, answer["fields"], load_doctype(answer["doctype"]),
                                     answer["method"]), False
