@@ -2,6 +2,7 @@
 
     python -m evaluation.auto_eval --split dev --cache   # E2's OCR and E5 on every receipt (free, slow)
     python -m evaluation.auto_eval --split dev --choose  # choosing rule sets by fingerprint
+    python -m evaluation.auto_eval --split dev --likeness  # grouping: same store vs different stores
     python -m evaluation.auto_eval --split dev           # replay the stream, summarize
 
 The cache step reads every receipt of the split once with E2's OCR (the lines
@@ -140,6 +141,31 @@ def choosing(split: str, root: Path) -> dict:
     }
 
 
+def likeness(split: str, root: Path) -> dict:
+    """auto.format_likeness for every pair of receipts of the stores with five
+    or more: how alike one store's receipts are, and how alike different
+    stores' are, to set auto.GROUP_ALIKE between them."""
+
+    import itertools
+
+    doctype = load_doctype("receipt")
+    cache = templates_eval.load_cache(root, split)
+    stores = templates_eval.groups(load_sroie(root, split=split, doctype=doctype))
+    items = [(store, templates_eval.cached_lines(cache[s.id])) for store, found in stores.items() for s in found]
+    same, different = [], []
+    for (first_store, first), (second_store, second) in itertools.combinations(items, 2):
+        (same if first_store == second_store else different).append(auto.format_likeness(first, second))
+
+    return {
+        "split": split, "same_store_pairs": len(same), "different_store_pairs": len(different),
+        "same_min": round(min(same), 3), "different_max": round(max(different), 3),
+        "by_threshold": {str(threshold): {"same_store_split": sum(value < threshold for value in same),
+                                          "different_stores_joined": sum(value >= threshold for value in different)}
+                         for threshold in (0.25, 0.3, 0.4, 0.5, 0.6)},
+        "group_alike": auto.GROUP_ALIKE,
+    }
+
+
 def stream(split: str, root: Path, seed: int = STREAM_SEED, teacher_check: str = "gate") -> dict:
     """Every receipt of the split in turn, as `/extract` with learning=auto
     would treat it, with E5 as the teacher (its cached answers).
@@ -227,6 +253,7 @@ def main() -> None:
     parser.add_argument("--data", type=Path, default=DEFAULT_ROOT)
     parser.add_argument("--cache", action="store_true", help="read every receipt with E2's OCR and E5")
     parser.add_argument("--choose", action="store_true", help="measure choosing the rule set by fingerprint")
+    parser.add_argument("--likeness", action="store_true", help="format likeness, same vs different stores")
     parser.add_argument("--teacher-check", default="gate", choices=["gate", "fields"],
                         help="when a teacher's answer becomes an example (gate: as the API)")
     args = parser.parse_args()
@@ -234,6 +261,12 @@ def main() -> None:
 
     if args.cache:
         print(f"Cached in {run_cache(args.split, args.data)}")
+        return
+    if args.likeness:
+        summary = likeness(args.split, args.data)
+        RESULTS.mkdir(parents=True, exist_ok=True)
+        (RESULTS / f"likeness-{args.split}.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+        print(json.dumps(summary, indent=2))
         return
     if args.choose:
         summary = choosing(args.split, args.data)
