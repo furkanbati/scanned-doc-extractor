@@ -72,6 +72,18 @@ def _drop_group(group: dict) -> None:
     (pending_dir() / f"{group['id']}.json").unlink(missing_ok=True)
 
 
+def forget(group_id: str) -> bool:
+    """Drop a waiting group and its examples; False when there is none."""
+
+    with _lock:
+        target = pending_dir() / f"{group_id}.json"
+        if not target.is_file() or target.parent != pending_dir():
+            return False
+        target.unlink()
+
+    return True
+
+
 def lettered(lines: list[OcrLine]) -> int:
     return sum(sum(char.isalpha() for char in line.text) >= FINGERPRINT_LETTERS for line in lines)
 

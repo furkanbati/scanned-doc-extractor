@@ -67,6 +67,10 @@ def names() -> dict[str, dict]:
             "created": template["created"],
             "examples": template["examples"],
             "fields": {name: rule["kind"] for name, rule in template["fields"].items()},
+            # Learned from a teacher's answers (extractor/templates/auto.py),
+            # and the documents left to check against the teacher.
+            "auto": bool(template.get("auto")),
+            "probation": template.get("probation", 0),
         }
 
     return found
