@@ -77,3 +77,10 @@ def delete(name: str) -> None:
     if not target.is_file():
         raise KeyError(f"No rule set named {name!r}")
     target.unlink()
+
+
+def all_templates() -> dict[str, dict]:
+    """Every saved rule set in full: file name -> rule set."""
+
+    return {file.stem: yaml.safe_load(file.read_text(encoding="utf-8"))
+            for file in sorted(directory().glob("*.yaml"))}

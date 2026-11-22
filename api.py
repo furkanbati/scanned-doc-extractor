@@ -29,6 +29,7 @@ from extractor.ocr.pdf_text import TextLayer, text_layer
 from extractor.schema import DocumentType, doctype_names, load_doctype, save_doctype
 from extractor.templates import read as template_read
 from extractor.templates import store as templates
+from extractor.templates.choose import choose
 from extractor.templates.learn import MAX_EXAMPLES, MIN_EXAMPLES, Example, learn, suggest
 from extractor.templates.values import value_from_lines
 
@@ -38,6 +39,8 @@ PDF_DPI = 200
 TEMPLATE = "template:"
 # The engine that reads what a rule set cannot: local, like the rule set.
 TEMPLATE_FALLBACK = "e5"
+# template=auto: the rule set is chosen by the document's fingerprint.
+AUTO = "auto"
 # An e-Fatura's XML is read as it is, whatever mode was chosen.
 XML_METHOD = "efatura_xml"
 
@@ -116,6 +119,18 @@ def document_text(data: bytes, pdf_text: str) -> TextLayer | None:
         return None
 
     return text_layer(data, PDF_DPI)
+
+
+def ocr_layer(image: Image.Image) -> TextLayer:
+    """E2's OCR once, kept to choose a rule set and read with it."""
+
+    ocr = get_pipeline("e2").ocr
+    if hasattr(ocr, "read_segments"):
+        segments = ocr.read_segments(image)
+        return TextLayer(segments, ocr.lines(segments), source="ocr")
+    lines = ocr.read(image)
+
+    return TextLayer(lines, lines, source="ocr")
 
 
 def choose_method(profile: str | None, method: str | None, template: str | None = None) -> tuple[str | None, list[str]]:
@@ -389,7 +404,8 @@ async def extract(
     file: UploadFile = File(...),
     profile: str | None = Form(None),
     method: str | None = Form(None),
-    template: str | None = Form(None, description="a saved rule set; E5 reads what it cannot"),
+    template: str | None = Form(None, description="a saved rule set, or auto: chosen by the document's "
+                                "fingerprint; E5 reads what it cannot"),
     pdf_text: str = Form("auto", description="auto: a digital PDF's text layer in place of OCR; off: always OCR"),
 ) -> dict:
     data = await file.read()
@@ -398,13 +414,22 @@ async def extract(
     # Needs no engine, so it is read even when the chosen one cannot run here.
     if looks_like_xml(data):
         answer = read_xml(data)
-        return {"profile": profile, **answer, "warning": None, "pages": 1,
+        return {"profile": profile, **answer, "warning": None, "pages": 1, "format": None,
                 "chain": [{"method": XML_METHOD, "seconds": answer["seconds"], "usd": None,
                            "accepted": answer["gate"]["accepted"], "reasons": answer["gate"]["reasons"],
                            "error": None}]}
-    profile, steps = choose_method(profile, method, template)
+    if template != AUTO:
+        profile, steps = choose_method(profile, method, template)
     text = document_text(data, pdf_text)
     image, pages = read_document(data)
+    match = None
+    if template == AUTO:
+        # Read the lines once; the chosen rule set reads the same ones.
+        text = text or ocr_layer(image)
+        match = choose(text.lines, templates.all_templates())
+        template = match.file if match else None
+        # No known format: the chosen mode reads it, as without a rule set.
+        profile, steps = choose_method(profile, method, template)
 
     # Each engine's gate decides whether its result stands or the document goes
     # to the next engine; the last engine's result stands either way.
@@ -442,6 +467,9 @@ async def extract(
         # Every engine that ran, in order, with its gate decision; the last
         # one that did not fail gave the result.
         "chain": chain,
+        # template=auto: the rule set the fingerprint chose (fixed lines found
+        # of how many), or None when the document is of no known format.
+        "format": match.to_json() if match else None,
         "seconds": round(sum(step["seconds"] or 0 for step in chain), 3),
         "usd": sum(costs) if costs else None,
         "pages": pages,
@@ -569,5 +597,5 @@ def run_engine(method: str, image: Image.Image, doctype_name: str | None = None,
         "meta": None,
         # Where the lines came from: "pdf" (text layer), "ocr", or None for an
         # engine that reads the image itself.
-        "text_source": ("pdf" if text is not None else "ocr") if reads_text else None,
+        "text_source": (text.source if text is not None else "ocr") if reads_text else None,
     }
