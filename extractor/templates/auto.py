@@ -40,9 +40,10 @@ from extractor.templates.learn import (
 from extractor.templates.values import same_value
 
 # Two documents are of one format when this share of the shorter one's
-# lettered lines is printed alike on the other (tuned on SROIE dev,
-# reports/auto_rule_sets.md).
-GROUP_ALIKE = 0.5
+# lettered lines is printed alike on the other. On SROIE dev, receipts of
+# different stores reach at most 0.21, those of one store 0.23 and up (6 of
+# 578 pairs under 0.3; reports/auto_rule_sets.md).
+GROUP_ALIKE = 0.3
 # Documents a new rule set's accepted reads are checked against the teacher.
 PROBATION = 5
 # Share of a rule set's accepted reads marked for a person, after probation.
