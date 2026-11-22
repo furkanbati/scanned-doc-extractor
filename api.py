@@ -29,6 +29,7 @@ from extractor.ocr.pdf_text import TextLayer, text_layer
 from extractor.schema import DocumentType, doctype_names, load_doctype, save_doctype
 from extractor.templates import read as template_read
 from extractor.templates import store as templates
+from extractor.templates import auto
 from extractor.templates.choose import choose
 from extractor.templates.learn import MAX_EXAMPLES, MIN_EXAMPLES, Example, learn, suggest
 from extractor.templates.values import value_from_lines
@@ -41,6 +42,7 @@ TEMPLATE = "template:"
 TEMPLATE_FALLBACK = "e5"
 # template=auto: the rule set is chosen by the document's fingerprint.
 AUTO = "auto"
+LEARNING = ("off", "auto")
 # An e-Fatura's XML is read as it is, whatever mode was chosen.
 XML_METHOD = "efatura_xml"
 
@@ -205,7 +207,14 @@ def template_list() -> dict:
             "fallback_available": catalogue.engines()[TEMPLATE_FALLBACK]["available"],
             "min_examples": MIN_EXAMPLES, "max_examples": MAX_EXAMPLES,
             # The fields a rule set learns: those of E2's document type.
-            "fields": load_doctype(load_engine("e2")["doctype"]).field_names}
+            "fields": load_doctype(load_engine("e2")["doctype"]).field_names,
+            # learning=auto: formats waiting for examples, with how many they have.
+            "pending": [{"group": group["id"], "doctype": group["doctype"], "examples": len(group["examples"]),
+                         "created": group["created"],
+                         "issuer": next((example["values"].get(load_doctype(group["doctype"]).field_names[0])
+                                         for example in group["examples"]), None)}
+                        for group in auto.groups()],
+            "examples_to_learn": MIN_EXAMPLES}
 
 
 @app.post("/templates")
@@ -388,6 +397,16 @@ def learned_answer(name: str, doctype: DocumentType, examples: list[Example], re
             "skipped": learned.skipped}
 
 
+@app.delete("/templates/pending/{group}")
+def pending_delete(group: str) -> dict:
+    """Forget a format waiting for examples (learning=auto)."""
+
+    if not group.isalnum() or not auto.forget(group):
+        raise HTTPException(status_code=404, detail=f"No waiting format {group!r}")
+
+    return {"deleted": group}
+
+
 @app.delete("/templates/{name}")
 def template_delete(name: str) -> dict:
     try:
@@ -407,7 +426,17 @@ async def extract(
     template: str | None = Form(None, description="a saved rule set, or auto: chosen by the document's "
                                 "fingerprint; E5 reads what it cannot"),
     pdf_text: str = Form("auto", description="auto: a digital PDF's text layer in place of OCR; off: always OCR"),
+    doctype: str | None = Form(None, description="the document type engines read (receipt, invoice, or a "
+                               "user's); a rule set reads its own"),
+    learning: str = Form("off", description="auto: learn rule sets from the teacher's accepted answers "
+                         "(implies template=auto)"),
 ) -> dict:
+    if learning not in LEARNING:
+        raise HTTPException(status_code=400, detail=f"learning must be one of {', '.join(LEARNING)}")
+    if doctype is not None:
+        doctype_or_404(doctype)
+    if learning == AUTO and template is None:
+        template = AUTO
     data = await file.read()
     if len(data) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="File larger than 10 MB")
@@ -415,6 +444,7 @@ async def extract(
     if looks_like_xml(data):
         answer = read_xml(data)
         return {"profile": profile, **answer, "warning": None, "pages": 1, "format": None,
+                "learning": None, "audit": False,
                 "chain": [{"method": XML_METHOD, "seconds": answer["seconds"], "usd": None,
                            "accepted": answer["gate"]["accepted"], "reasons": answer["gate"]["reasons"],
                            "error": None}]}
@@ -434,7 +464,7 @@ async def extract(
     # Each engine's gate decides whether its result stands or the document goes
     # to the next engine; the last engine's result stands either way.
     # With a rule set, every engine reads its document type (E5 an invoice).
-    doctype = templates.load(template)["doctype"] if template else None
+    doctype = templates.load(template)["doctype"] if template else doctype
     answer, chain, failure = None, [], None
     for number, step in enumerate(steps, start=1):
         try:
@@ -457,23 +487,83 @@ async def extract(
     if answer is None:
         raise HTTPException(status_code=502, detail=failure)
 
+    learned, audited = None, False
+    if learning == AUTO:
+        answer, learned, audited = learn_from(answer, chain, match, image, text, doctype)
+
     costs = [step["usd"] for step in chain if step["usd"] is not None]
 
     return {
         "profile": profile,
         **answer,
         # Set when the rule set did not read the document: who did, and why.
-        "warning": template_warning(chain, answer["method"]) if template else None,
+        "warning": probation_warning(learned) or (template_warning(chain, answer["method"]) if template else None),
         # Every engine that ran, in order, with its gate decision; the last
         # one that did not fail gave the result.
         "chain": chain,
         # template=auto: the rule set the fingerprint chose (fixed lines found
         # of how many), or None when the document is of no known format.
         "format": match.to_json() if match else None,
+        # learning=auto: the group the document was added to and whether a
+        # rule set was learned, or a probation check; None otherwise.
+        "learning": learned,
+        # An automatic rule set's accepted read picked for a person to check.
+        "audit": audited,
         "seconds": round(sum(step["seconds"] or 0 for step in chain), 3),
         "usd": sum(costs) if costs else None,
         "pages": pages,
     }
+
+
+def learn_from(answer: dict, chain: list[dict], match, image: Image.Image, text: TextLayer | None,
+               doctype: str | None) -> tuple[dict, dict | None, bool]:
+    """learning=auto, after the engines ran: the answer (the teacher's when a
+    rule set on probation disagreed with it), what was learned, and whether to
+    audit.
+
+    - Of no known format, accepted from a teacher: an example for its format.
+    - Accepted by an automatic rule set on probation: the teacher reads it too.
+    - Accepted by an automatic rule set after probation: sometimes audited.
+    """
+
+    accepted = answer["gate"] is not None and answer["gate"]["accepted"]
+    if not accepted:
+        return answer, None, False
+    if match is None:
+        if text is None or answer["method"].startswith(TEMPLATE):
+            return answer, None, False
+        return answer, auto.observe(text.lines, answer["fields"], load_doctype(answer["doctype"]),
+                                    answer["method"]), False
+    if answer["method"] != TEMPLATE + match.file:
+        return answer, None, False
+    if not auto.on_probation(match.template):
+        return answer, None, auto.audit(match.template)
+    if not catalogue.engines()[TEMPLATE_FALLBACK]["available"]:
+        return answer, {"probation": {"rule_set": match.file, "skipped": "the teacher cannot run here"}}, False
+
+    teacher = run_engine(TEMPLATE_FALLBACK, image, doctype, text)
+    teacher_gate = teacher["gate"]
+    chain.append({"method": TEMPLATE_FALLBACK, "seconds": teacher["seconds"], "usd": teacher["usd"],
+                  "accepted": teacher_gate["accepted"] if teacher_gate else None,
+                  "reasons": teacher_gate["reasons"] if teacher_gate else [], "error": None, "probation": True})
+    if not (teacher_gate and teacher_gate["accepted"]):
+        # A teacher unsure of its own answer cannot judge the rule set.
+        return answer, {"probation": {"rule_set": match.file, "skipped": "the teacher's answer did not pass its checks"}}, False
+    checked = auto.check(match.file, match.template, load_doctype(answer["doctype"]), answer["fields"],
+                         teacher["fields"])
+    get_template_pipeline.cache_clear()
+
+    return (answer if checked["agreed"] else teacher), {"probation": checked}, False
+
+
+def probation_warning(learned: dict | None) -> str | None:
+    checked = (learned or {}).get("probation") or {}
+    if not checked.get("removed"):
+        return None
+
+    return (f"The automatic rule set {checked['rule_set']!r} read {', '.join(checked['differ'])} differently from "
+            f"{TEMPLATE_FALLBACK.upper()} while on probation, so it was removed; {TEMPLATE_FALLBACK.upper()}'s "
+            "answer is shown.")
 
 
 def read_xml(data: bytes) -> dict:
