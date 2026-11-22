@@ -43,7 +43,10 @@ def result_rows(results: list[dict]) -> list[dict]:
             notes.append(f"only page 1 of {result['pages']} read")
         if result.get("warning"):
             # The rule set did not read it: another engine did, or no one could.
-            notes.insert(0, "rule set did not fit")
+            removed = ((result.get("learning") or {}).get("probation") or {}).get("removed")
+            notes.insert(0, "automatic rule set removed" if removed else "rule set did not fit")
+        if result.get("audit"):
+            notes.insert(0, "picked for a random check")
         row["check"] = "; ".join(notes)
         if "chain" in result:
             # The engine whose result this is; in a chained mode, the first one
@@ -68,6 +71,25 @@ def engine_name(result: dict) -> str:
     name = f"rule set: {result['template']}" if result.get("template") else result["method"]
 
     return name + " (PDF text)" if result.get("text_source") == "pdf" else name
+
+
+def describe_learning(learning: dict | None) -> str | None:
+    """What learning=auto did with the document, in a sentence."""
+
+    if not learning:
+        return None
+    checked = learning.get("probation")
+    if checked:
+        if checked.get("skipped"):
+            return f"Probation check skipped: {checked['skipped']}."
+        if checked.get("removed"):
+            return None  # the warning says it
+        return f"The new rule set agreed with the teacher; {checked['left']} more documents to check."
+    if learning.get("learned"):
+        return f"Learned the rule set {learning['learned']!r} from this and earlier documents of its format."
+
+    return (f"Kept as example {learning['examples']} of {learning.get('needed', 3)} for a new format; "
+            "its rule set is learned when there are enough.")
 
 
 def _items_check(result: dict) -> str:
