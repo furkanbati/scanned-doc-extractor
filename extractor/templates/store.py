@@ -67,6 +67,10 @@ def names() -> dict[str, dict]:
             "created": template["created"],
             "examples": template["examples"],
             "fields": {name: rule["kind"] for name, rule in template["fields"].items()},
+            # Learned from a teacher's answers (extractor/templates/auto.py),
+            # and the documents left to check against the teacher.
+            "auto": bool(template.get("auto")),
+            "probation": template.get("probation", 0),
         }
 
     return found
@@ -77,3 +81,10 @@ def delete(name: str) -> None:
     if not target.is_file():
         raise KeyError(f"No rule set named {name!r}")
     target.unlink()
+
+
+def all_templates() -> dict[str, dict]:
+    """Every saved rule set in full: file name -> rule set."""
+
+    return {file.stem: yaml.safe_load(file.read_text(encoding="utf-8"))
+            for file in sorted(directory().glob("*.yaml"))}
