@@ -1,0 +1,22 @@
+{
+  "split": "dev",
+  "receipts": 226,
+  "stream_seed": 7,
+  "teacher_check": "gate",
+  "teacher_accepted": 27,
+  "rule_sets_learned": 1,
+  "removed_on_probation": [],
+  "read_by_rule_sets": 1,
+  "e5_calls": 226,
+  "probation_checks": 1,
+  "right_all": 0.8164,
+  "right_all_e5_alone": 0.8164,
+  "right_by_rule_sets": 1.0,
+  "right_by_rule_sets_e5_on_same": 1.0,
+  "read_by_rule_sets_alone": 0,
+  "seconds_e5_saved": 0,
+  "rule_set_reads_of_another_store": 0,
+  "learned": [
+    "restoran-wan-sheng-auto"
+  ]
+}
