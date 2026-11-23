@@ -13,7 +13,7 @@ import requests
 import streamlit as st
 from PIL import Image, ImageDraw, ImageFont
 
-from export import columns, engine_name, line_item_rows, result_rows, to_csv, to_json, to_xlsx
+from export import columns, describe_learning, engine_name, line_item_rows, result_rows, to_csv, to_json, to_xlsx
 
 API_URL = os.getenv("API_URL", "http://localhost:8000")
 PDF_DPI = 200  # the API renders PDFs at the same scale, so boxes line up
@@ -144,12 +144,12 @@ def setup_panel(local: dict) -> None:
         model_download(local)
 
 
-def extract(data: bytes, filename: str, choice: tuple[str, str]) -> dict:
+def extract(data: bytes, filename: str, choice: tuple[str, str], extra: dict | None = None) -> dict:
     kind, name = choice
     response = requests.post(
         f"{API_URL}/extract",
         files={"file": (filename, data)},
-        data={kind: name},
+        data={kind: name, **(extra or {})},
         timeout=900,
     )
     if response.status_code != 200:
@@ -317,8 +317,9 @@ def rule_sets_page() -> None:
     """The saved rule sets; new ones are taught in Extract by choosing E2."""
 
     st.subheader("Rule sets")
-    st.caption("A rule set is E2's reading of one format. Teach a new one under Extract → Advanced → "
-               "Choose the engine myself → e2.")
+    st.caption("A rule set reads one format without a model. Teach a new one under Extract → Advanced → "
+               "Choose the engine myself → e2, or let them be learned from your documents: Extract → Advanced → "
+               "Learn rule sets from my documents automatically.")
     saved = load_templates()
     st.markdown("**Saved rule sets**")
     if not saved["templates"]:
@@ -326,10 +327,26 @@ def rule_sets_page() -> None:
     for file, info in saved["templates"].items():
         columns_ = st.columns([4, 1])
         rules = ", ".join(f"{field}: {kind}" for field, kind in info["fields"].items())
+        learned = ""
+        if info.get("auto"):
+            learned = " · learned automatically" + (f", {info['probation']} documents of probation left"
+                                                     if info.get("probation") else "")
         columns_[0].markdown(f"**{info['name']}** · {info['doctype']} · {info['examples']} examples · "
-                             f"{info['created']}  \n<span style='opacity:0.7'>{rules}</span>", unsafe_allow_html=True)
+                             f"{info['created']}{learned}  \n<span style='opacity:0.7'>{rules}</span>",
+                             unsafe_allow_html=True)
         if columns_[1].button("Delete", key="delete-" + file):
             requests.delete(f"{API_URL}/templates/{file}", timeout=10)
+            st.rerun()
+
+    waiting = saved.get("pending", [])
+    if waiting:
+        st.markdown("**Formats waiting for examples** (learning automatically)")
+    for group in waiting:
+        columns_ = st.columns([4, 1])
+        columns_[0].markdown(f"{group['issuer'] or 'Unnamed format'} · {group['doctype']} · "
+                             f"{group['examples']} of {saved.get('examples_to_learn', 3)} examples · since {group['created']}")
+        if columns_[1].button("Forget", key="forget-" + group["group"]):
+            requests.delete(f"{API_URL}/templates/pending/{group['group']}", timeout=10)
             st.rerun()
 
 
@@ -496,6 +513,10 @@ def engine_label(name: str, engine: dict) -> str:
 
 
 HIDDEN_ENGINES = {"e1"}
+AUTO_LEARN = ("Documents of no known format are read by the chosen engine (the teacher). When every check "
+              "passes, the document is kept as an example of its format; three examples of one format teach "
+              "its rule set, which then reads that format in seconds, without a model. A new rule set's first "
+              "documents are checked against the teacher, and a few later ones are marked for a random check.")
 NEW_RULE_SET = "+ Teach a new rule set"
 
 
@@ -579,6 +600,7 @@ with st.sidebar:
     available, reason, leaves = chosen["available"], chosen["unavailable_reason"], chosen["leaves_machine"]
     measured = chosen["measured"]
 
+    extra = {}
     with st.expander("Advanced"):
         if st.checkbox("Choose the engine myself"):
             # E1 (Tesseract) stays in the API and the reports as the baseline.
@@ -599,6 +621,13 @@ with st.sidebar:
             else:
                 st.caption(engine["description"])
                 st.caption(describe(engine["measured"]))
+
+        if choice[0] != "template" and st.checkbox("Learn rule sets from my documents automatically",
+                                                   key="auto_learn"):
+            kinds = list(load_doctypes()) or ["receipt"]
+            extra = {"learning": "auto",
+                     "doctype": st.selectbox("Document type", kinds, key="auto_doctype")}
+            st.caption(AUTO_LEARN)
 
         st.markdown("**Planned providers**")
         for provider in catalogue["planned"]:
@@ -639,7 +668,7 @@ if not uploads:
     st.stop()
 
 documents = [(upload.name, upload.getvalue()) for upload in uploads]
-keys = [(file_key(name, data), choice) for name, data in documents]
+keys = [(file_key(name, data), choice, tuple(sorted(extra.items()))) for name, data in documents]
 pending = [index for index, key in enumerate(keys) if key not in results]
 
 if pending:
@@ -652,7 +681,7 @@ if pending:
             name, data = documents[index]
             progress.progress((step - 1) / len(pending), text=f"Reading {name} ({step} of {len(pending)})")
             try:
-                item = {"file": name, "result": extract(data, name, choice), "error": None}
+                item = {"file": name, "result": extract(data, name, choice, extra), "error": None}
             except (requests.RequestException, RuntimeError) as error:
                 item = {"file": name, "result": None, "error": str(error)}
             results[keys[index]] = item
@@ -776,7 +805,16 @@ with right:
 
     if result.get("warning"):
         st.warning(result["warning"])
-    chain = result.get("chain", [])
+    if result.get("audit"):
+        st.warning("Picked for a random check: an automatic rule set read this one and every check passed. "
+                   "Compare the fields with the document; a correction shows whether the rule set can be trusted.")
+    if describe_learning(result.get("learning")):
+        st.caption(describe_learning(result.get("learning")))
+    # A probation check is the teacher reading it again, not another answer.
+    checks = [step for step in result.get("chain", []) if step.get("probation")]
+    chain = [step for step in result.get("chain", []) if not step.get("probation")]
+    if checks:
+        st.caption(f"Checked by {checks[0]['method']} too, while the rule set is on probation.")
     if len(chain) > 1:
         answered = [step for step in chain if not step["error"]][-1]
         steps = [f"{step['method']} failed ({step['error']})" if step["error"]

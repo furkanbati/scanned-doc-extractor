@@ -26,10 +26,12 @@ PIECE_GAP = 1.5
 @dataclass(frozen=True)
 class TextLayer:
     """`segments`: the pieces as drawn (the line-item rules take these, as
-    they take OCR's boxes); `lines`: the pieces joined row by row."""
+    they take OCR's boxes); `lines`: the pieces joined row by row; `source`:
+    "pdf" for a text layer, "ocr" for lines OCR read once and passed on."""
 
     segments: list[OcrLine]
     lines: list[OcrLine]
+    source: str = "pdf"
 
 
 def pdf_text_lines(data: bytes, dpi: int) -> list[OcrLine] | None:

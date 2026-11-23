@@ -1,0 +1,56 @@
+{
+  "split": "dev",
+  "rule_sets": 6,
+  "receipts_with_a_rule_set": 52,
+  "receipts_without": 141,
+  "own": 52,
+  "other": 0,
+  "none": 0,
+  "no_rule_set_none": 135,
+  "no_rule_set_other": 6,
+  "own_share": 1.0,
+  "wrong_examples": [
+    {
+      "id": "002",
+      "store": "MRDIYJOHORSDNBHD",
+      "chosen": "MRDIYMSDNBHD",
+      "found": 6,
+      "fixed": 9
+    },
+    {
+      "id": "154",
+      "store": "KHEELECTRICALTRADING",
+      "chosen": "SYARIKATPERNIAGAANGINKEE",
+      "found": 9,
+      "fixed": 15
+    },
+    {
+      "id": "231",
+      "store": "MRDIYKUCHAISDNBHD",
+      "chosen": "MRDIYMSDNBHD",
+      "found": 7,
+      "fixed": 9
+    },
+    {
+      "id": "378",
+      "store": "MRDIYKUCHAISDNBHD",
+      "chosen": "MRDIYMSDNBHD",
+      "found": 6,
+      "fixed": 9
+    },
+    {
+      "id": "572",
+      "store": "MRDIYKUCHAISDNBHD",
+      "chosen": "MRDIYMSDNBHD",
+      "found": 7,
+      "fixed": 9
+    },
+    {
+      "id": "580",
+      "store": "MRDIYKUCHAISDNBHD",
+      "chosen": "MRDIYMSDNBHD",
+      "found": 7,
+      "fixed": 9
+    }
+  ]
+}
