@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 import catalogue
 import local_model
 from extractor.efatura import NotAnInvoice, looks_like_xml, read_invoice
-from extractor.gate import LINE_ITEMS, decide
+from extractor.gate import LINE_ITEMS, decide, decide_fields
 from extractor.locate import locate_fields
 from extractor.pipeline import Pipeline, build_pipeline, build_template_pipeline, load_engine
 from extractor.review import review_notes
@@ -684,6 +684,10 @@ def run_engine(method: str, image: Image.Image, doctype_name: str | None = None,
         gate = template_read.decide(template, doctype, result.lines, review).to_json()
     elif line_items is not None:
         gate = decide(line_items, review).to_json()
+    elif not doctype.line_items:
+        # An invoice has no items to check against: its fields and sums are
+        # checked, so a caller (an n8n flow) always has a decision.
+        gate = decide_fields(doctype, result.fields, review).to_json()
     else:
         gate = None
 

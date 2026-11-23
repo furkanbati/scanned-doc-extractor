@@ -30,6 +30,8 @@ import re
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 
+from extractor.schema import DocumentType, Fields
+
 # General words for "on top of the item above" (English and Indonesian), or a
 # leading "+", at the start of the name.
 ADD_ON = re.compile(r"^[^0-9A-Za-z+]*(?:\+|(?:add|extra|tambah|topping)\b)", re.IGNORECASE)
@@ -96,5 +98,39 @@ def decide(line_items: dict | None, review: dict[str, str] | None = None, strict
         found += [f"{name!r} costs under a quarter of the item above" for name in cheap_items(items)]
 
     reasons += [LINE_ITEMS + reason for reason in found]
+
+    return GateDecision(not reasons, reasons)
+
+
+# Subtotal plus tax may differ from the total by this much from rounding.
+SUM_TOLERANCE = Decimal("0.01")
+# The amount fields whose sum is checked, when a document type has all three.
+SUM_FIELDS = ("subtotal", "tax", "total")
+
+
+def sum_reasons(doctype: DocumentType, fields: Fields) -> list[str]:
+    """Where the type has a subtotal, a tax and a total and all are read: why
+    they do not add up, or nothing."""
+
+    kinds = {spec.name: spec.type for spec in doctype.fields}
+    if not all(kinds.get(name) == "amount" for name in SUM_FIELDS):
+        return []
+    normalized = doctype.normalize(fields)
+    try:
+        subtotal, tax, total = (Decimal(normalized[name]) for name in SUM_FIELDS)
+    except (TypeError, InvalidOperation):
+        return []  # one is missing: optional, or a review note already
+    if abs(subtotal + tax - total) > SUM_TOLERANCE:
+        return [f"subtotal {subtotal} plus tax {tax} is not the total {total}"]
+
+    return []
+
+
+def decide_fields(doctype: DocumentType, fields: Fields, review: dict[str, str]) -> GateDecision:
+    """The gate for a document type without line items (an invoice): every
+    required field found and well formed, and the sums adding up where the
+    type has them. Weaker than the line-item gate: a misread name passes."""
+
+    reasons = [f"{name} {note}" for name, note in review.items()] + sum_reasons(doctype, fields)
 
     return GateDecision(not reasons, reasons)

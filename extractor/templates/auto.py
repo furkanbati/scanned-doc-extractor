@@ -25,12 +25,12 @@ under pending/.
 
 import json
 import random
-from decimal import Decimal, InvalidOperation
 import threading
 import uuid
 from datetime import date
 from pathlib import Path
 
+from extractor.gate import decide_fields
 from extractor.ocr.base import OcrLine
 from extractor.review import review_notes
 from extractor.schema import DocumentType
@@ -55,29 +55,13 @@ PROBATION = 5
 # Share of a rule set's accepted reads marked for a person, after probation.
 AUDIT_SHARE = 0.02
 
-# Subtotal plus tax may differ from the total by this much from rounding.
-TOLERANCE = Decimal("0.01")
-# The amount fields whose sum is checked, when a document type has all three.
-SUM_FIELDS = ("subtotal", "tax", "total")
-
 _lock = threading.Lock()
 
 
 def teacher_checks(doctype: DocumentType, fields: dict) -> list[str]:
     """Why a teacher's answer cannot be an example; empty when it can."""
 
-    reasons = [f"{name} {note}" for name, note in review_notes(doctype, fields).items()]
-    kinds = {spec.name: spec.type for spec in doctype.fields}
-    if all(kinds.get(name) == "amount" for name in SUM_FIELDS):
-        normalized = doctype.normalize(fields)
-        try:
-            subtotal, tax, total = (Decimal(normalized[name]) for name in SUM_FIELDS)
-        except (TypeError, InvalidOperation):
-            return reasons  # one is missing: optional, or already a reason
-        if abs(subtotal + tax - total) > TOLERANCE:
-            reasons.append(f"subtotal {subtotal} plus tax {tax} is not the total {total}")
-
-    return reasons
+    return decide_fields(doctype, fields, review_notes(doctype, fields)).reasons
 
 
 def pending_dir() -> Path:
