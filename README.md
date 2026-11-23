@@ -275,7 +275,8 @@ POST /extract  file            image, PDF or e-Fatura XML; optional profile=accu
                -> fields, normalized fields, fields to check, OCR lines and boxes,
                   the lines behind each field, line items (e2, e5; null otherwise),
                   seconds, tokens, USD, page count, the engines tried (chain),
-                  and with a rule set a warning when it did not fit
+                  and with a rule set a warning when it did not fit;
+                  gate: {accepted, reasons}, the decision a caller acts on
 GET    /doctypes               document types: the project's and the users'
 POST   /doctypes               a new document type: name, fields (name, type, optional)
 POST   /ocr       file         the numbered OCR lines and boxes to pick fields from
@@ -306,6 +307,28 @@ still wrong: [reports/cord_gate.md](reports/cord_gate.md).
 
 An engine that cannot run on the server (no OpenAI key, no Ollama) is answered
 with 503 and the reason.
+
+### From n8n or an agent
+
+One HTTP call per document: `POST /extract` (multipart, the file as `file`).
+For a flow that should need no one:
+
+- send `learning=auto` (rule sets chosen and learned, see above) and
+  `doctype=invoice` (or `receipt`, or a type of your own); an e-Fatura XML is
+  read from its tags whatever is sent;
+- act on `gate.accepted`: true means every check passed, write the fields on;
+  false, send the document and `gate.reasons` to a person. Every answer has a
+  decision: with line items they must add up, without them (invoices read by
+  E3 or E5) the required fields must be found and well formed, and subtotal,
+  tax and total must add up. A misread name can still pass;
+- also send to a person what comes back with `audit: true`, and read
+  `warning` when it is set;
+- allow 120 s per request (E5 takes 20 to 30 s, twice that while a new rule
+  set is on probation). Requests are served side by side: a document being
+  read does not hold up the next one or `/health`, though documents for E5
+  still wait for each other in Ollama;
+- run the flow on the same machine or Docker network: the API has no
+  authentication yet (roadmap 19), and listens on localhost only.
 
 ## Data
 
