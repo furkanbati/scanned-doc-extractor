@@ -221,7 +221,7 @@ def template_list() -> dict:
 
 
 @app.post("/templates")
-async def template_create(
+def template_create(
     name: str = Form(...),
     files: list[UploadFile] = File(...),
     values: str = Form(..., description="JSON list: the confirmed fields of each file, in order"),
@@ -254,7 +254,7 @@ async def template_create(
     ocr = get_pipeline("e2").ocr
     examples = []
     for upload, fields in zip(files, confirmed):
-        data = await upload.read()
+        data = upload.file.read()
         if len(data) > MAX_UPLOAD_BYTES:
             raise HTTPException(status_code=413, detail=f"{upload.filename} is larger than 10 MB")
         image, _ = read_document(data)
@@ -307,12 +307,12 @@ def doctype_or_404(name: str) -> DocumentType:
 
 
 @app.post("/ocr")
-async def ocr(file: UploadFile = File(...), pdf_text: str = Form("auto")) -> dict:
+def ocr(file: UploadFile = File(...), pdf_text: str = Form("auto")) -> dict:
     """E2's OCR lines and boxes, numbered in reading order: the lines a user
     picks each field's value from when teaching a rule set. A digital PDF's
     text layer gives them without OCR."""
 
-    data = await file.read()
+    data = file.file.read()
     if len(data) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="File larger than 10 MB")
     text = document_text(data, pdf_text)
@@ -421,8 +421,11 @@ def template_delete(name: str) -> dict:
     return {"deleted": name}
 
 
+# Endpoints that read documents are plain functions: FastAPI runs them in its
+# thread pool, so a document taking 20 s does not hold up other requests
+# (/health, a second document) while it is read.
 @app.post("/extract")
-async def extract(
+def extract(
     file: UploadFile = File(...),
     profile: str | None = Form(None),
     method: str | None = Form(None),
@@ -440,7 +443,7 @@ async def extract(
         doctype_or_404(doctype)
     if learning == AUTO and template is None:
         template = AUTO
-    data = await file.read()
+    data = file.file.read()
     if len(data) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="File larger than 10 MB")
     # Needs no engine, so it is read even when the chosen one cannot run here.
