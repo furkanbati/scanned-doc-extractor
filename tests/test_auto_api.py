@@ -30,8 +30,9 @@ class Teacher:
         subtotal = Decimal(str(sum(items)))
         total = subtotal * Decimal("1.2")
         if Teacher.wrong_total:
-            fields["total"], total = "1.234,00", Decimal("1234.00")
-            subtotal = total / Decimal("1.2")
+            # Wrong, but adding up: the teacher's checks pass it.
+            fields.update(subtotal="1.028,33", tax="205,67", total="1.234,00")
+            subtotal, total = Decimal("1028.33"), Decimal("1234.00")
         result = LineItemResult(items=[LineItem(name="ÜRÜN", amount=subtotal)], subtotal=subtotal,
                                 tax=total - subtotal, total=total, needs_review=False)
         return PipelineResult(fields=fields, lines=[], line_items=result)
@@ -148,3 +149,19 @@ def test_only_a_model_teaches(client, monkeypatch):
 
     assert body["gate"]["accepted"] is True
     assert body["learning"] is None
+
+
+def test_a_teacher_answer_whose_sums_do_not_hold_is_not_kept(learning, monkeypatch):
+    original = Teacher.run
+
+    def misread(self, image):
+        result = original(self, image)
+        return PipelineResult(fields={**result.fields, "subtotal": "1,00"}, lines=[], line_items=result.line_items)
+
+    monkeypatch.setattr(Teacher, "run", misread)
+
+    body = learning(41)
+
+    assert body["learning"]["kept"] is False
+    assert "plus tax" in body["learning"]["why"][0]
+    assert auto.groups() == []

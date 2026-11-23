@@ -123,3 +123,20 @@ def test_audit_only_after_probation(monkeypatch):
     assert auto.audit({"auto": True, "probation": 0}) is True
     assert auto.audit({"auto": True, "probation": 2}) is False
     assert auto.audit({"name": "taught by a user"}) is False
+
+
+def test_a_teacher_answer_is_an_example_when_its_fields_and_sums_hold():
+    good = teacher(153, 12, [1000.0])
+
+    assert auto.teacher_checks(INVOICE, good) == []
+    assert auto.teacher_checks(INVOICE, good | {"subtotal": "250,00"}) == [
+        "subtotal 250.00 plus tax 200.00 is not the total 1200.00"]
+    assert auto.teacher_checks(INVOICE, good | {"invoice_number": None}) == ["invoice_number not found"]
+    # A missing optional amount leaves the sum unchecked.
+    assert auto.teacher_checks(INVOICE, good | {"subtotal": None}) == []
+
+
+def test_receipts_have_no_sum_to_check():
+    receipt = load_doctype("receipt")
+
+    assert auto.teacher_checks(receipt, {"company": "A", "address": "B", "date": "01/02/2024", "total": "9.00"}) == []
