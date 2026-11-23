@@ -85,6 +85,8 @@ def describe_learning(learning: dict | None) -> str | None:
         if checked.get("removed"):
             return None  # the warning says it
         return f"The new rule set agreed with the teacher; {checked['left']} more documents to check."
+    if learning.get("kept") is False:
+        return "Not kept as an example for learning: " + "; ".join(learning["why"]) + "."
     if learning.get("learned"):
         return f"Learned the rule set {learning['learned']!r} from this and earlier documents of its format."
 

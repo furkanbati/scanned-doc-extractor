@@ -21,7 +21,8 @@ def test_a_document_of_a_known_format_is_read_with_its_rule_set(client):
     original = Ocr.read
     Ocr.read = lambda self, image: calls.append(1) or original(self, image)
     try:
-        body = client.post("/extract", files={"file": ("n.png", png(44))}, data={"template": "auto"}).json()
+        body = client.post("/extract", files={"file": ("n.png", png(44))},
+                           data={"template": "auto", "method": "e5"}).json()
     finally:
         Ocr.read = original
 

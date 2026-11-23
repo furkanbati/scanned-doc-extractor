@@ -246,6 +246,8 @@ def test_what_learning_did_is_said_in_a_sentence():
     from ui.export import describe_learning
 
     assert describe_learning(None) is None
+    assert describe_learning({"kept": False, "why": ["total not found"]}) == (
+        "Not kept as an example for learning: total not found.")
     assert describe_learning({"group": "a", "examples": 2, "needed": 3, "learned": None}).startswith(
         "Kept as example 2 of 3")
     assert "'abc-auto'" in describe_learning({"group": "a", "examples": 3, "needed": 3, "learned": "abc-auto"})

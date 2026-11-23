@@ -455,14 +455,28 @@ async def extract(
         profile, steps = choose_method(profile, method, template)
     text = document_text(data, pdf_text)
     image, pages = read_document(data)
-    match = None
+    match, teacher_method = None, TEMPLATE_FALLBACK
     if template == AUTO:
         # Read the lines once; the chosen rule set reads the same ones.
         text = text or ocr_layer(image)
         match = choose(text.lines, templates.all_templates())
         template = match.file if match else None
-        # No known format: the chosen mode reads it, as without a rule set.
-        profile, steps = choose_method(profile, method, template)
+        try:
+            # No known format: the chosen mode reads it, as without a rule set.
+            mode_profile, mode_steps = choose_method(profile, method)
+        except HTTPException:
+            if match is None:
+                raise
+            mode_profile, mode_steps = None, []
+        # The mode's model is the teacher: what reads a document the rule set
+        # cannot, and what checks a new rule set on probation.
+        teacher_method = next((step for step in mode_steps if step in TEACHERS), TEMPLATE_FALLBACK)
+        if match is None:
+            profile, steps = mode_profile, mode_steps
+        else:
+            profile = None
+            steps = [TEMPLATE + match.file] + (
+                [teacher_method] if catalogue.engines()[teacher_method]["available"] else [])
 
     # Each engine's gate decides whether its result stands or the document goes
     # to the next engine; the last engine's result stands either way.
@@ -492,7 +506,7 @@ async def extract(
 
     learned, audited = None, False
     if learning == AUTO:
-        answer, learned, audited = learn_from(answer, chain, match, image, text, doctype)
+        answer, learned, audited = learn_from(answer, chain, match, image, text, doctype, teacher_method)
 
     costs = [step["usd"] for step in chain if step["usd"] is not None]
 
@@ -519,42 +533,46 @@ async def extract(
 
 
 def learn_from(answer: dict, chain: list[dict], match, image: Image.Image, text: TextLayer | None,
-               doctype: str | None) -> tuple[dict, dict | None, bool]:
+               doctype: str | None, teacher_method: str = TEMPLATE_FALLBACK) -> tuple[dict, dict | None, bool]:
     """learning=auto, after the engines ran: the answer (the teacher's when a
     rule set on probation disagreed with it), what was learned, and whether to
     audit.
 
-    - Of no known format, accepted from a teacher: an example for its format.
+    - Of no known format, read by a teacher whose answer passes its checks
+      (auto.teacher_checks): an example for its format.
     - Accepted by an automatic rule set on probation: the teacher reads it too.
     - Accepted by an automatic rule set after probation: sometimes audited.
     """
 
-    accepted = answer["gate"] is not None and answer["gate"]["accepted"]
-    if not accepted:
-        return answer, None, False
     if match is None:
         if text is None or answer["method"] not in TEACHERS:
             return answer, None, False
+        doubts = auto.teacher_checks(load_doctype(answer["doctype"]), answer["fields"])
+        if doubts:
+            return answer, {"kept": False, "why": doubts}, False
         return answer, auto.observe(text.lines, answer["fields"], load_doctype(answer["doctype"]),
                                     answer["method"]), False
-    if answer["method"] != TEMPLATE + match.file:
+    if answer["method"] != TEMPLATE + match.file or not answer["gate"]["accepted"]:
         return answer, None, False
     if not auto.on_probation(match.template):
         return answer, None, auto.audit(match.template)
-    if not catalogue.engines()[TEMPLATE_FALLBACK]["available"]:
+    if not catalogue.engines()[teacher_method]["available"]:
         return answer, {"probation": {"rule_set": match.file, "skipped": "the teacher cannot run here"}}, False
 
-    teacher = run_engine(TEMPLATE_FALLBACK, image, doctype, text)
-    teacher_gate = teacher["gate"]
-    chain.append({"method": TEMPLATE_FALLBACK, "seconds": teacher["seconds"], "usd": teacher["usd"],
-                  "accepted": teacher_gate["accepted"] if teacher_gate else None,
-                  "reasons": teacher_gate["reasons"] if teacher_gate else [], "error": None, "probation": True})
-    if not (teacher_gate and teacher_gate["accepted"]):
-        # A teacher unsure of its own answer cannot judge the rule set.
-        return answer, {"probation": {"rule_set": match.file, "skipped": "the teacher's answer did not pass its checks"}}, False
+    teacher = run_engine(teacher_method, image, doctype, text)
+    doubts = auto.teacher_checks(load_doctype(teacher["doctype"]), teacher["fields"])
+    chain.append({"method": teacher_method, "seconds": teacher["seconds"], "usd": teacher["usd"],
+                  "accepted": not doubts, "reasons": doubts, "error": None, "probation": True})
+    if doubts:
+        # A teacher whose answer fails its own checks cannot judge the rule set.
+        return answer, {"probation": {"rule_set": match.file,
+                                      "skipped": "the teacher's answer did not pass its checks"}}, False
     checked = auto.check(match.file, match.template, load_doctype(answer["doctype"]), answer["fields"],
                          teacher["fields"])
     get_template_pipeline.cache_clear()
+
+    if not checked["agreed"]:
+        checked["teacher"] = teacher_method
 
     return (answer if checked["agreed"] else teacher), {"probation": checked}, False
 
@@ -564,9 +582,10 @@ def probation_warning(learned: dict | None) -> str | None:
     if not checked.get("removed"):
         return None
 
+    teacher = checked.get("teacher", TEMPLATE_FALLBACK).upper()
+
     return (f"The automatic rule set {checked['rule_set']!r} read {', '.join(checked['differ'])} differently from "
-            f"{TEMPLATE_FALLBACK.upper()} while on probation, so it was removed; {TEMPLATE_FALLBACK.upper()}'s "
-            "answer is shown.")
+            f"{teacher} while on probation, so it was removed; {teacher}'s answer is shown.")
 
 
 def read_xml(data: bytes) -> dict:

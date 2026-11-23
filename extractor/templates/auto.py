@@ -1,15 +1,19 @@
 """Rule sets learned without a user, from a teacher's answers.
 
 A document of no known format is read by a model (the teacher: E5, or E3).
-When the gate accepts the teacher's answer (its fields are all found and well
-formed, its amounts add up), the document becomes an example of its format:
+When the teacher's answer passes its checks (teacher_checks: every field the
+type requires found and well formed, and, where the type has a subtotal, a
+tax and a total, those adding up), the document becomes an example of its
+format:
 documents printing enough of the same fixed lines are put in one group. Once
 a group has three examples, the rule set is learned from them as from a
 user's (extractor/templates/learn.py) and saved, marked `auto`.
 
 Safeguards, since no person looks:
 
-- only answers the gate accepted become examples;
+- only answers that pass the teacher's checks become examples (the line
+  items are not asked to add up: on SROIE dev the gate accepted 27 of E5's
+  226 answers, and E5 reads no items on invoices; reports/auto_rule_sets.md);
 - learning's own self-check, and the rule set's gate on every document;
 - probation: the first documents a new rule set accepts are read by the
   teacher too; one disagreement and the rule set is removed;
@@ -21,12 +25,14 @@ under pending/.
 
 import json
 import random
+from decimal import Decimal, InvalidOperation
 import threading
 import uuid
 from datetime import date
 from pathlib import Path
 
 from extractor.ocr.base import OcrLine
+from extractor.review import review_notes
 from extractor.schema import DocumentType
 from extractor.templates import store
 from extractor.templates.learn import (
@@ -49,7 +55,29 @@ PROBATION = 5
 # Share of a rule set's accepted reads marked for a person, after probation.
 AUDIT_SHARE = 0.02
 
+# Subtotal plus tax may differ from the total by this much from rounding.
+TOLERANCE = Decimal("0.01")
+# The amount fields whose sum is checked, when a document type has all three.
+SUM_FIELDS = ("subtotal", "tax", "total")
+
 _lock = threading.Lock()
+
+
+def teacher_checks(doctype: DocumentType, fields: dict) -> list[str]:
+    """Why a teacher's answer cannot be an example; empty when it can."""
+
+    reasons = [f"{name} {note}" for name, note in review_notes(doctype, fields).items()]
+    kinds = {spec.name: spec.type for spec in doctype.fields}
+    if all(kinds.get(name) == "amount" for name in SUM_FIELDS):
+        normalized = doctype.normalize(fields)
+        try:
+            subtotal, tax, total = (Decimal(normalized[name]) for name in SUM_FIELDS)
+        except (TypeError, InvalidOperation):
+            return reasons  # one is missing: optional, or already a reason
+        if abs(subtotal + tax - total) > TOLERANCE:
+            reasons.append(f"subtotal {subtotal} plus tax {tax} is not the total {total}")
+
+    return reasons
 
 
 def pending_dir() -> Path:
