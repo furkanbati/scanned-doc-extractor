@@ -80,6 +80,64 @@ them local, E5. Rule sets and the document types users define are saved as YAML
 in `templates/` (in Docker, on a volume); they are the user's data and stay out
 of git. Invoice fields are not measured: there is no labelled invoice set yet.
 
+## Rule sets without a user: chosen and learned automatically
+
+For an agent or a batch (n8n, LangGraph), nobody picks a rule set or teaches
+one. Two parameters of `/extract` do it instead; both are off by default, so
+nothing changes unless they are asked for.
+
+**`template=auto`: the rule set is chosen by the document.** Every rule set
+keeps its fingerprint, the lines all its examples printed alike. The document
+is read once (OCR, or a PDF's text layer) and given to the rule set whose
+fingerprint it prints the largest share of, if that share is at least 60%;
+otherwise it is of no known format and the chosen mode reads it. The answer
+says which format was found (`format`).
+
+**`learning=auto`: rule sets are learned from a model's answers.**
+
+1. A document of no known format is read by the chosen mode's model, the
+   *teacher*: E5 (private) or E3 (high accuracy). E2's general rules never teach.
+2. Its answer becomes an example when every field the document type requires
+   is found and well formed and, where the type has a subtotal, a tax and a
+   total, they add up (within 0.01).
+3. Examples are grouped by format: two documents are of one format when at
+   least 30% of the shorter one's lines with letters are printed alike on both.
+4. At three examples of one format its rule set is learned, as from a user's
+   examples, and saved as *automatic*. From then on that format is read by
+   the rule set: no model, a few seconds.
+5. **Probation:** the first 5 documents a new rule set accepts are read by the
+   teacher too. At the first disagreement the rule set is removed and the
+   teacher's answer is returned, with a warning.
+6. **Audit:** after probation, 2% of what an automatic rule set accepts comes
+   back with `audit: true`, for a person to check.
+
+The answer says what happened (`learning`): the document was kept as example
+2 of 3, a rule set was learned, a probation check agreed, or the answer was not
+kept and why. In the UI: *Advanced* → *Learn rule sets from my documents
+automatically*, with the document type. The *Rule sets* page marks automatic
+rule sets and their probation, and lists the formats waiting for examples
+(which can be forgotten).
+
+**What it was measured to do** (SROIE dev, 226 receipts, as a stream with E5
+as the teacher; made-up invoices; [reports/auto_rule_sets.md](reports/auto_rule_sets.md)):
+
+- Choosing: every one of 52 receipts of a store with a rule set got its own;
+  6 of 141 receipts of other stores were matched to a rule set (branches of one
+  chain, laid out alike), and its gate rejected all 6, so none was misread.
+- Learning: 11 rule sets learned, accuracy the same as E5 alone (0.816), no
+  receipt of another store accepted. SROIE has few receipts per store, so most
+  rule-set reads were still on probation: E5 was saved on 2 receipts only. The
+  gain comes with formats that repeat many times, which SROIE does not have.
+- The teacher limits it. E5 read the subtotal wrong on 3 of 4 made-up invoices
+  (the sum check refused them) and dropped a digit of every invoice number; the
+  one rule set removed on probation on SROIE was right, and E5 wrong. With E3
+  as the teacher, all 4 invoices were read right, the rule set was learned at
+  the third and read the fourth right in 2.6 s.
+
+So: use E3 as the teacher where documents may leave the machine for the first
+few of each format; with E5, expect fewer rule sets, and the ones it learns
+are only as right as E5.
+
 ## Digital invoices: e-Fatura and text PDFs
 
 Not every document is a scan. Two kinds are read without OCR:
@@ -192,6 +250,9 @@ bash scripts/download_sroie.sh              # SROIE with corrected labels, into 
 cp .env.example .env                        # add OPENAI_API_KEY for e3
 docker compose --profile test run --rm test python -m evaluation.run --config e2
 docker compose --profile test run --rm test python -m evaluation.compare
+python -m evaluation.auto_eval --split dev --cache    # E2's OCR and E5 on dev (about 90 min)
+python -m evaluation.auto_eval --split dev --choose   # choosing rule sets by fingerprint
+python -m evaluation.auto_eval --split dev            # learning without a user, as a stream
 docker compose --profile test run --rm test # unit tests
 ```
 
@@ -203,6 +264,10 @@ GET  /methods                  every engine (e1 ... e5) with the same details
 POST /extract  file            image, PDF or e-Fatura XML; optional profile=accurate|private
                [profile|method]  or method=e1...e5 (default: the default mode)
                [template]        or template=<rule set>: read with it, E5 for what it cannot
+               [template=auto]   the rule set chosen by the document's fingerprint (format)
+               [learning]        auto: learn rule sets from the teacher's answers (learning,
+                                 audit); implies template=auto; default off
+               [doctype]         the document type engines read (receipt, invoice, a user's)
                [pdf_text]        auto (default): a PDF's text layer in place of OCR; off: OCR
                an e-Fatura XML is read from its tags whatever was chosen (method
                "efatura_xml", its ETTN, currency, type and buyer in meta);
@@ -220,7 +285,9 @@ POST   /templates/value        the value in picked lines, as learning reads it
 POST   /templates/learn        name, doctype, 3-6 examples (lines, picked lines, values)
                -> "saved", or "needs_examples" with the fields that disagree and
                   which example does not fit the others
-GET    /templates              saved rule sets, whether E5 is there
+GET    /templates              saved rule sets (automatic ones with their probation),
+                                formats waiting for examples, whether E5 is there
+DELETE /templates/pending/{group}   forget a format waiting for examples
 POST   /templates  name, files, values   the same from files, receipts only
 DELETE /templates/{name}
 ```
