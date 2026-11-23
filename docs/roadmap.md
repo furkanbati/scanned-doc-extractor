@@ -31,9 +31,13 @@ section.
 6. **No retry with feedback.** When a model's numbers do not add up, it is not
    asked again ("the items add up to X, you said Y").
 7. **User corrections are not stored.** Edits in the UI only go into the
-   downloaded file; they are needed for auditing and for new rules or models.
-8. **No random audit or monitoring in production**: no sample of accepted
-   documents checked by a person, no pass-rate or review-reason tracking.
+   downloaded file. With learning=auto a correction should become an example
+   of its format, and a correction to an audited read should send its rule set
+   back to probation; the teacher's own errors (reports/auto_rule_sets.md)
+   are only caught this way.
+8. **Monitoring in production is thin.** Automatic rule sets mark 2% of what
+   they accept for a person (`audit`), but nothing tracks pass rates, review
+   reasons or audit outcomes over time.
 
 ## Fields and data
 
@@ -59,12 +63,19 @@ section.
 14. **E5 is still slow.** On the Intel Arc 130T iGPU it takes 21 s per receipt
     with line items (33 s on the CPU for the same work). Try smaller images, or
     reading the fields without the items when the items are not needed.
-15. **Rule sets: line items and choosing are left** (reports/templates.md).
-    Document types with the user's own fields, taught by picking OCR lines,
-    are done; invoice fields are not measured (no labelled invoices). Next:
-    line-item columns learned from the examples, and choosing the rule set by
-    its fingerprint instead of by hand. The two SROIE stores it could not
-    learn print their address and total in more than one place.
+15. **Rule sets: line items are left** (reports/templates.md,
+    reports/auto_rule_sets.md). Document types with the user's own fields,
+    choosing the rule set by fingerprint (template=auto) and learning rule
+    sets from a model's answers (learning=auto) are done. Next: line-item
+    columns learned from the examples. The two SROIE stores it could not learn
+    print their address and total in more than one place.
+22. **Learning without a user is only as good as its teacher.** E5 misreads
+    invoice subtotals and drops digits of long numbers; the sum check catches
+    the first, not the second, and probation compares with the same teacher
+    (on SROIE dev it removed a rule set that was right). Ideas: E3 as the
+    teacher for the first documents of a format even in private mode (asked
+    per format), or two teachers that must agree. Not measured on many
+    documents of one format: SROIE has few per store.
 
 ## Digital documents
 
