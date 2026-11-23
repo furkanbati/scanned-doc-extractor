@@ -317,8 +317,9 @@ def rule_sets_page() -> None:
     """The saved rule sets; new ones are taught in Extract by choosing E2."""
 
     st.subheader("Rule sets")
-    st.caption("A rule set is E2's reading of one format. Teach a new one under Extract → Advanced → "
-               "Choose the engine myself → e2.")
+    st.caption("A rule set reads one format without a model. Teach a new one under Extract → Advanced → "
+               "Choose the engine myself → e2, or let them be learned from your documents: Extract → Advanced → "
+               "Learn rule sets from my documents automatically.")
     saved = load_templates()
     st.markdown("**Saved rule sets**")
     if not saved["templates"]:
@@ -809,7 +810,11 @@ with right:
                    "Compare the fields with the document; a correction shows whether the rule set can be trusted.")
     if describe_learning(result.get("learning")):
         st.caption(describe_learning(result.get("learning")))
-    chain = result.get("chain", [])
+    # A probation check is the teacher reading it again, not another answer.
+    checks = [step for step in result.get("chain", []) if step.get("probation")]
+    chain = [step for step in result.get("chain", []) if not step.get("probation")]
+    if checks:
+        st.caption(f"Checked by {checks[0]['method']} too, while the rule set is on probation.")
     if len(chain) > 1:
         answered = [step for step in chain if not step["error"]][-1]
         steps = [f"{step['method']} failed ({step['error']})" if step["error"]
