@@ -225,10 +225,76 @@ Details: [evaluation/results/error_analysis.md](evaluation/results/error_analysi
 
 ## How it works
 
+### What happens to a document (`POST /extract`)
+
+```mermaid
+flowchart TD
+    A[Document] --> B{e-Fatura XML?}
+    B -- yes --> X[efatura.py reads it<br/>no OCR, no model] --> R
+    B -- no --> C{PDF with a text layer?<br/>20+ letters, not rotated}
+    C -- yes --> T[Text layer: lines and boxes]
+    C -- no --> O[Page as image: OCR or a vision model]
+    T --> D
+    O --> D
+    D{template=auto and a rule set's<br/>fingerprint ≥ 60% printed?}
+    D -- yes --> S[Rule set reads it] --> G{Gate accepts?}
+    G -- yes --> R
+    G -- no --> M
+    D -- no --> M[Mode or engine reads it<br/>method / profile]
+    M --> L{learning=auto?}
+    L -- yes --> P[Teacher's answer passes checks<br/>→ example → group → rule set at 3]
+    L -- no --> R
+    P --> R[Answer: fields, gate, review,<br/>warning, audit, learning, chain]
 ```
-image ─► OCR (Tesseract | RapidOCR) ─► lines + boxes ─► fields (rules | local LLM)
-image ─────────────────────────────────────────────────► fields (OpenAI vision | local vision model)
-```
+
+1. **Is OCR needed?** Decided from the bytes, before any engine runs.
+
+   | Document | What reads it | `text_source` |
+   |---|---|---|
+   | e-Fatura XML | [extractor/efatura.py](extractor/efatura.py), exact values; nothing else runs | `xml` |
+   | PDF with a text layer (`pdf_text=auto`) | [extractor/ocr/pdf_text.py](extractor/ocr/pdf_text.py): lines and their boxes, no misread letters | `pdf` |
+   | Scan, photo, or `pdf_text=off` | OCR, or a vision model reading the image | `ocr` |
+
+2. **Who reads it?** The first of these that applies:
+   - `template=auto`: the lines are read once and matched against every rule
+     set's fingerprint; a document printing at least 60% of a rule set's fixed
+     lines is read by it. If its gate rejects the read, the teacher (E3 or E5) reads it.
+   - `template=<name>`: that rule set.
+   - `method=e1 … e5`: that engine.
+   - `profile`: `accurate` runs E3, `private` runs E5 (E2 while Ollama is
+     unreachable); without either, the first available mode in [profiles.yaml](profiles.yaml).
+3. **Learning (`learning=auto`).** A teacher answer with every required field
+   found and well formed, and subtotal + tax = total, becomes an example. Examples
+   are grouped by format (likeness ≥ 0.3); the third teaches an automatic rule
+   set. Its first 5 reads are checked by the teacher (removed at the first
+   disagreement), then 2% come back with `audit: true`.
+4. **The answer** carries what a flow needs to decide: `gate.accepted` and
+   `reasons`, `review` (fields a person should check), `warning`, `audit`,
+   `learning`, `format` and `chain` (every engine that ran, with time, cost and
+   its gate decision).
+
+### Engines
+
+| Engine | What it does | Where it runs | In the UI |
+|---|---|---|---|
+| E1 | Tesseract OCR, general rules | Local | Hidden; kept as the baseline |
+| E2 | RapidOCR, general rules or a user's rule set | Local, fast, free | Needs a rule set |
+| E3 | OpenAI vision model reads the image | Cloud, paid, most accurate | *High accuracy* |
+| E4 | RapidOCR text read by a local LLM (qwen3.5:4b) | Local (Ollama) | Advanced |
+| E5 | Local vision model (qwen3-vl:2b) reads the image | Local (Ollama), slow | *Private* |
+
+### How it talks to people and other systems
+
+- **UI** ([ui/app.py](ui/app.py), Streamlit): upload, pick a mode, check and
+  correct the table, see the fields outlined on the image, download. The *Rule
+  sets* page teaches a rule set from three examples and lists the automatic
+  ones and the formats still waiting.
+- **API** ([api.py](api.py), FastAPI): `/extract`, `/ocr`, `/templates`,
+  `/profiles`, `/methods`, `/doctypes`, `/local-model`, `/health`. See [API](#api).
+- **n8n or an agent:** calls `/extract` with `learning=auto` and acts on
+  `gate.accepted` and `audit`; no person gives values. See [From n8n or an agent](#from-n8n-or-an-agent).
+
+### Building blocks
 
 - **Document types** ([extractor/doctypes](extractor/doctypes)): the fields to
   extract, their type (text, date, amount) and a description. The model prompts
@@ -242,6 +308,39 @@ image ────────────────────────�
   the dataset, runs an engine on it, reports field accuracy, CER, speed, tokens
   and cost per receipt; runs resume from a checkpoint if they stop. The product
   does not depend on it, and it is left out of the Docker images.
+
+### Files
+
+| Path | What it does |
+|---|---|
+| [api.py](api.py) | The FastAPI service: every endpoint and the flow above |
+| [catalogue.py](catalogue.py) | Which modes and engines can run on this machine (OpenAI key, Ollama) |
+| [local_model.py](local_model.py) | Checks the Ollama model and downloads it |
+| [profiles.yaml](profiles.yaml) | The modes users pick, and their fallback engine |
+| `Dockerfile`, `Dockerfile.ui`, `docker-compose*.yml` | API, UI and Ollama containers; a GPU variant |
+| **extractor/** | |
+| [pipeline.py](extractor/pipeline.py) | Runs an engine's steps: preprocessing, OCR (or given text), fields, line items |
+| [schema.py](extractor/schema.py), [doctypes/](extractor/doctypes) | Document types and how values are normalized |
+| [engines/](extractor/engines) | E1–E5 settings and measured results |
+| [efatura.py](extractor/efatura.py) | e-Fatura UBL-TR XML reader |
+| [amounts.py](extractor/amounts.py) | Amounts as printed ("1.250,00", "1,250.00") to numbers |
+| [gate.py](extractor/gate.py) | Accept or reject: line items adding up, or required fields and sums |
+| [review.py](extractor/review.py) | Flags the fields a person should check |
+| [locate.py](extractor/locate.py) | Finds the OCR lines a value came from, to outline them |
+| **extractor/ocr/** | `base.py` (the `OcrLine`), `tesseract.py` (E1), `rapid.py` (E2, E4), `pdf_text.py` (a PDF's text layer) |
+| **extractor/fields/** | |
+| [rules.py](extractor/fields/rules.py), [line_items.py](extractor/fields/line_items.py) | General rules for fields and for line items and totals |
+| [template.py](extractor/fields/template.py) | Reading with a rule set |
+| `openai_vision.py`, `local_llm.py`, `local_vision.py` | E3, E4, E5 model calls |
+| `prompt.py`, `model_items.py`, `base.py` | Prompt and JSON schema from a document type; models' line items; the shared `Extraction` |
+| **extractor/templates/** | |
+| [learn.py](extractor/templates/learn.py), [read.py](extractor/templates/read.py), [values.py](extractor/templates/values.py) | Learning a rule set from examples without a model; reading with it; finding values, shared by both |
+| [store.py](extractor/templates/store.py) | Rule sets as YAML in `templates/` or `TEMPLATES_DIR`, never in git |
+| [choose.py](extractor/templates/choose.py) | Picks a rule set by fingerprint |
+| [auto.py](extractor/templates/auto.py) | Learning without a user: groups, waiting formats, probation, audit |
+| **ui/** | `app.py` (Streamlit UI), `export.py` (Excel, CSV, JSON and the notes beside each document) |
+| **evaluation/** | Loading SROIE and CORD, running engines, scoring, the chain, rule-set and learning measurements; results in `evaluation/results/` |
+| `reports/`, `docs/`, `scripts/`, `tests/` | Experiment reports, roadmap, dataset downloads, unit tests |
 
 ## Reproduce the measurements
 
